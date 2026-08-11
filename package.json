@@ -1,0 +1,37 @@
+{
+  "name": "smart-drink-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Netherlands-first self-service ordering, payment, and manual fulfillment platform.",
+  "packageManager": "npm@11.11.0",
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11 <12"
+  },
+  "workspaces": [
+    "apps/kiosk-web",
+    "apps/kitchen-display-web",
+    "apps/admin-web"
+  ],
+  "scripts": {
+    "dev:kiosk": "npm run dev --workspace @smart-drink/kiosk-web",
+    "dev:kitchen": "npm run dev --workspace @smart-drink/kitchen-display-web",
+    "dev:admin": "npm run dev --workspace @smart-drink/admin-web",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check:frontend": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.0",
+    "eslint": "^9.30.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.3.0",
+    "prettier": "^3.6.0",
+    "typescript-eslint": "^8.35.0"
+  }
+}

@@ -1,0 +1,22 @@
+name: smart-drink-platform
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    profiles: ['postgres']
+    environment:
+      POSTGRES_DB: smartdrink
+      POSTGRES_USER: smartdrink
+      POSTGRES_PASSWORD: smartdrink
+    ports:
+      - '5432:5432'
+    volumes:
+      - smartdrink-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U smartdrink -d smartdrink']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  smartdrink-postgres:

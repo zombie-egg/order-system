@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: npm ci
+      - run: npm run check:frontend
+      - run: python -m pip install -e "apps/edge-api[dev]"
+      - run: python -m ruff format --check apps/edge-api
+      - run: python -m ruff check apps/edge-api
+      - run: python -m mypy apps/edge-api/app
+      - run: python -m pytest apps/edge-api/tests
