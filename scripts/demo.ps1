@@ -182,6 +182,77 @@ function Resolve-DemoPort {
     return $ParsedValue
 }
 
+function Test-DemoTcpPortOpen {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateRange(1, 65535)]
+        [int]$Port
+    )
+
+    $Client = [System.Net.Sockets.TcpClient]::new()
+    try {
+        $Connection = $Client.BeginConnect("127.0.0.1", $Port, $null, $null)
+        if (-not $Connection.AsyncWaitHandle.WaitOne(250)) {
+            return $false
+        }
+        $Client.EndConnect($Connection)
+        return $true
+    }
+    catch {
+        return $false
+    }
+    finally {
+        $Client.Dispose()
+    }
+}
+
+function Resolve-AvailableDemoPort {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ParameterName,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateRange(1, 65535)]
+        [int]$PreferredPort,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateRange(1, 65535)]
+        [int]$FallbackStart,
+
+        [int[]]$ReservedPorts = @()
+    )
+
+    if (
+        $ReservedPorts -notcontains $PreferredPort -and
+        -not (Test-DemoTcpPortOpen -Port $PreferredPort)
+    ) {
+        return $PreferredPort
+    }
+
+    if ($ProvidedParameters.ContainsKey($ParameterName)) {
+        throw "TCP port $PreferredPort requested by -$ParameterName is already in use."
+    }
+
+    $FallbackEnd = [Math]::Min($FallbackStart + 99, 65535)
+    for ($Candidate = $FallbackStart; $Candidate -le $FallbackEnd; $Candidate++) {
+        if (
+            $ReservedPorts -notcontains $Candidate -and
+            -not (Test-DemoTcpPortOpen -Port $Candidate)
+        ) {
+            Write-Warning (
+                "TCP port $PreferredPort is already in use. " +
+                "The demo will automatically use port $Candidate instead."
+            )
+            return $Candidate
+        }
+    }
+
+    throw (
+        "TCP port $PreferredPort is already in use and no free fallback port was found " +
+        "from $FallbackStart through $FallbackEnd."
+    )
+}
+
 function Get-DemoSeedResult {
     $Output = & $PythonExe -m app.cli seed-demo
     if ($LASTEXITCODE -ne 0) {
@@ -231,7 +302,7 @@ function Write-DemoInstructions {
     $SeedAction = if ([bool]$Credentials.created) { "created" } else { "verified" }
     Write-Host ""
     Write-Host "============================================================" -ForegroundColor Cyan
-    Write-Host " Smart Drink local demo is ready ($SeedAction)." -ForegroundColor Cyan
+    Write-Host " SipPilot local demo is ready ($SeedAction)." -ForegroundColor Cyan
     Write-Host "============================================================" -ForegroundColor Cyan
     Write-Host "Start with Kitchen Display and keep that page connected."
     Write-Host ""
@@ -295,6 +366,31 @@ $AdminPort = Resolve-DemoPort `
     -EnvironmentName "ADMIN_PORT" `
     -ExplicitValue $AdminPort `
     -DefaultValue 5175
+
+$ReservedDemoPorts = @()
+$ApiPort = Resolve-AvailableDemoPort `
+    -ParameterName "ApiPort" `
+    -PreferredPort $ApiPort `
+    -FallbackStart 18000 `
+    -ReservedPorts $ReservedDemoPorts
+$ReservedDemoPorts += $ApiPort
+$KioskPort = Resolve-AvailableDemoPort `
+    -ParameterName "KioskPort" `
+    -PreferredPort $KioskPort `
+    -FallbackStart 15173 `
+    -ReservedPorts $ReservedDemoPorts
+$ReservedDemoPorts += $KioskPort
+$KitchenDisplayPort = Resolve-AvailableDemoPort `
+    -ParameterName "KitchenDisplayPort" `
+    -PreferredPort $KitchenDisplayPort `
+    -FallbackStart 15174 `
+    -ReservedPorts $ReservedDemoPorts
+$ReservedDemoPorts += $KitchenDisplayPort
+$AdminPort = Resolve-AvailableDemoPort `
+    -ParameterName "AdminPort" `
+    -PreferredPort $AdminPort `
+    -FallbackStart 15175 `
+    -ReservedPorts $ReservedDemoPorts
 
 $ResolvedPorts = @($ApiPort, $KioskPort, $KitchenDisplayPort, $AdminPort)
 if (@($ResolvedPorts | Select-Object -Unique).Count -ne $ResolvedPorts.Count) {

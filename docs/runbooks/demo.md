@@ -68,7 +68,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 一键演示使用 `var/demo/demo.db`，不会写入日常开发数据库 `var/dev.db`。正常重复启动不会复制演示数据，也不会删除订单。
 
-演示端口可以通过脚本参数覆盖；启动器会把匹配的 API Base URL 注入三个 Vite 开发进程并让 `dev.ps1` 生成对应的 loopback CORS origins，因此 `-StartupCheck` 示例可安全使用备用端口。
+演示端口可以通过脚本参数覆盖；启动器会把匹配的 API Base URL 注入三个 Vite 开发进程并让 `dev.ps1` 生成对应的 loopback CORS origins，因此 `-StartupCheck` 示例可安全使用备用端口。如果默认端口已被其他程序或无法访问的旧进程占用，双击启动器会自动寻找空闲备用端口并在窗口中打印最终地址。
 
 `seed-demo` 会严格校验 Backend 管理的演示组织、商品、税率、价格、可售状态和固定凭据哈希。如果核心数据被人工改变，启动会安全失败并保留现状，不会悄悄覆盖 Admin 中的操作。
 
@@ -116,7 +116,7 @@ Test-Path .\scripts\demo.ps1
   -KitchenDisplayPort 15174 -AdminPort 15175
 ```
 
-如果 `8000` 被无法关闭的旧测试进程占用，也可以直接用备用端口正常演示：
+如果你显式指定端口，端口被占用时启动器会报错而不会擅自更改；可以改用备用端口：
 
 ```powershell
 .\scripts\demo.ps1 -ApiPort 18000 -KioskPort 15173 `

@@ -30,6 +30,8 @@ $RequiredDemoMarkers = @(
     'VITE_API_BASE_URL = $ApiBaseUrl',
     'VITE_API_URL = $ApiBaseUrl',
     'CORS_ORIGINS = (@(',
+    'Resolve-AvailableDemoPort',
+    '-FallbackStart 18000',
     'seed-demo',
     '--check-heads',
     '127.0.0.1'

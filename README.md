@@ -145,7 +145,7 @@ docker compose --profile postgres up -d postgres
 
 - `无法识别 .\scripts\bootstrap.ps1`：先运行 `Get-Location` 和 `Test-Path .\scripts\bootstrap.ps1`，后者必须返回 `True`。
 - 执行策略询问：无需选择 `A`，使用上面的 `Set-ExecutionPolicy ... -Force`，不要永久设为 `Unrestricted`。
-- 端口占用：停止旧进程，或仅在开发验收时向 `dev.ps1` 传入明确的备用端口。
+- 端口占用：`Start-Demo.cmd` 会自动选择并打印空闲备用端口；直接使用 `dev.ps1` 时应停止旧进程或传入明确的备用端口。
 - 依赖安装失败：确认 PyPI/npm 网络可用后重跑 Bootstrap，不要删除锁文件掩盖解析问题。
 
 ## 文档
