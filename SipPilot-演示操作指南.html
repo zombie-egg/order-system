@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>SipPilot 饮航｜演示操作指南</title>
+    <style>
+      :root {
+        --ink: #17342c;
+        --muted: #587068;
+        --green: #176b4d;
+        --green-dark: #0d4935;
+        --mint: #eaf7f1;
+        --cream: #fffaf0;
+        --line: #d9e7e0;
+        --white: #fff;
+        --orange: #d76a29;
+        --shadow: 0 18px 50px rgba(25, 73, 56, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: linear-gradient(135deg, #f4fbf7 0%, #fffaf1 52%, #f6f8f7 100%);
+        font-family: 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
+        line-height: 1.75;
+      }
+      a {
+        color: var(--green);
+      }
+      code {
+        padding: 0.15rem 0.4rem;
+        border-radius: 0.35rem;
+        color: #f8fffb;
+        background: #214c3e;
+        font-family: Consolas, monospace;
+      }
+      .wrap {
+        width: min(1120px, calc(100% - 32px));
+        margin: 0 auto;
+      }
+      header {
+        padding: 72px 0 48px;
+      }
+      .hero {
+        position: relative;
+        overflow: hidden;
+        padding: clamp(32px, 6vw, 64px);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        border-radius: 32px;
+        color: #fff;
+        background: linear-gradient(120deg, #0b3e2e, #177354 68%, #2f9a73);
+        box-shadow: var(--shadow);
+      }
+      .hero::after {
+        content: '';
+        position: absolute;
+        right: -80px;
+        top: -100px;
+        width: 330px;
+        height: 330px;
+        border: 60px solid rgba(255, 255, 255, 0.08);
+        border-radius: 50%;
+      }
+      .eyebrow {
+        margin: 0 0 8px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        color: #b8f5dc;
+      }
+      h1 {
+        margin: 0;
+        font-size: clamp(38px, 7vw, 74px);
+        line-height: 1.05;
+      }
+      .subtitle {
+        max-width: 760px;
+        margin: 20px 0 0;
+        font-size: clamp(17px, 2vw, 22px);
+        color: #e2fff2;
+      }
+      .quick-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 28px;
+      }
+      .quick-nav a {
+        padding: 10px 16px;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 999px;
+        color: #fff;
+        text-decoration: none;
+        background: rgba(255, 255, 255, 0.1);
+      }
+      main {
+        padding-bottom: 80px;
+      }
+      section {
+        margin: 24px 0;
+        padding: clamp(24px, 4vw, 44px);
+        border: 1px solid var(--line);
+        border-radius: 26px;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 10px 35px rgba(26, 70, 54, 0.07);
+      }
+      h2 {
+        margin: 0 0 18px;
+        font-size: clamp(26px, 4vw, 38px);
+        line-height: 1.25;
+      }
+      h3 {
+        margin: 0 0 8px;
+        font-size: 21px;
+      }
+      .lead {
+        color: var(--muted);
+        font-size: 17px;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+      .card {
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: #fff;
+      }
+      .card .number {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        margin-bottom: 16px;
+        border-radius: 13px;
+        color: #fff;
+        background: var(--green);
+        font-weight: 900;
+        font-size: 20px;
+      }
+      .card p {
+        margin-bottom: 0;
+        color: var(--muted);
+      }
+      .site-kiosk {
+        border-top: 6px solid #db7c38;
+      }
+      .site-kds {
+        border-top: 6px solid #236aa0;
+      }
+      .site-admin {
+        border-top: 6px solid #176b4d;
+      }
+      .credential {
+        display: grid;
+        grid-template-columns: 160px 1fr;
+        gap: 10px 20px;
+        padding: 22px;
+        border-radius: 18px;
+        background: var(--mint);
+      }
+      .credential dt {
+        font-weight: 800;
+      }
+      .credential dd {
+        margin: 0;
+        font-family: Consolas, monospace;
+        overflow-wrap: anywhere;
+      }
+      .steps {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        counter-reset: step;
+      }
+      .steps li {
+        position: relative;
+        margin: 0 0 18px;
+        padding: 4px 0 22px 66px;
+        border-bottom: 1px dashed var(--line);
+      }
+      .steps li:last-child {
+        border-bottom: 0;
+      }
+      .steps li::before {
+        counter-increment: step;
+        content: counter(step);
+        position: absolute;
+        left: 0;
+        top: 0;
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        color: #fff;
+        background: var(--green);
+        font-weight: 900;
+      }
+      .steps strong {
+        display: block;
+        font-size: 19px;
+      }
+      .note,
+      .warning {
+        margin-top: 18px;
+        padding: 18px 20px;
+        border-radius: 16px;
+      }
+      .note {
+        border-left: 5px solid var(--green);
+        background: var(--mint);
+      }
+      .warning {
+        border-left: 5px solid var(--orange);
+        background: #fff2e9;
+      }
+      .flow {
+        display: flex;
+        align-items: stretch;
+        gap: 10px;
+      }
+      .flow > div {
+        flex: 1;
+        padding: 18px;
+        border-radius: 16px;
+        text-align: center;
+        background: var(--mint);
+        font-weight: 800;
+      }
+      .arrow {
+        display: grid;
+        place-items: center;
+        flex: 0 0 auto !important;
+        padding: 0 !important;
+        background: transparent !important;
+        font-size: 24px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 13px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: var(--mint);
+      }
+      footer {
+        padding: 0 0 50px;
+        text-align: center;
+        color: var(--muted);
+      }
+      @media (max-width: 820px) {
+        .cards {
+          grid-template-columns: 1fr;
+        }
+        .flow {
+          flex-direction: column;
+        }
+        .arrow {
+          transform: rotate(90deg);
+        }
+        .credential {
+          grid-template-columns: 1fr;
+          gap: 2px;
+        }
+        .credential dd {
+          margin-bottom: 12px;
+        }
+      }
+      @media print {
+        body {
+          background: #fff;
+        }
+        .hero,
+        section {
+          box-shadow: none;
+        }
+        .quick-nav {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="wrap">
+      <div class="hero">
+        <p class="eyebrow">SIPPILOT · 饮航</p>
+        <h1>演示操作指南</h1>
+        <p class="subtitle">
+          不用懂代码。照着本页做一遍，就能完整展示“顾客点单 → 收款 → 人工制作 →
+          管理后台查看”的业务流程。
+        </p>
+        <nav class="quick-nav" aria-label="快速导航">
+          <a href="#start">如何启动</a><a href="#sites">三个网站</a><a href="#accounts">演示账号</a
+          ><a href="#demo">完整演示</a><a href="#faq">常见问题</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section id="start">
+        <h2>一、怎么启动？</h2>
+        <ol class="steps">
+          <li><strong>打开项目文件夹</strong>进入 <code>D:\ppt\大学\收银平台项目</code>。</li>
+          <li>
+            <strong>双击 Start-Demo.cmd</strong>第一次启动可能需要安装依赖，请等待窗口显示 “SipPilot
+            local demo is ready”。不要关闭这个黑色窗口。
+          </li>
+          <li>
+            <strong>看窗口打印的地址</strong
+            >系统通常会自动打开三个网页。若没有自动打开，就复制窗口中的 Kiosk、Kitchen
+            Display、Admin 地址到浏览器。
+          </li>
+          <li>
+            <strong>演示结束</strong>回到黑色启动窗口按 <code>Ctrl+C</code>，即可停止本次运行。
+          </li>
+        </ol>
+        <div class="note">
+          <strong>端口数字不一定相同：</strong>默认是 5173、5174、5175 和
+          8000。如果这些端口被占用，启动器会自动换成 15173、15174、15175、18001
+          等可用端口。请始终以启动窗口实际打印的地址为准。
+        </div>
+      </section>
+
+      <section id="sites">
+        <h2>二、为什么有三个网站？</h2>
+        <p class="lead">
+          因为真实门店里有三类不同的人在使用系统。把它们分开，既方便操作，也避免顾客进入员工或管理员功能。
+        </p>
+        <div class="cards">
+          <article class="card site-kiosk">
+            <div class="number">1</div>
+            <h3>Kiosk 顾客点单机</h3>
+            <p>
+              <strong>给顾客使用。</strong>类似麦当劳/KFC
+              的触摸点餐屏。顾客浏览饮品、选择杯型和牛奶、查看税费、提交订单、模拟刷卡，并看到取餐号。
+            </p>
+          </article>
+          <article class="card site-kds">
+            <div class="number">2</div>
+            <h3>Kitchen Display 制作看板</h3>
+            <p>
+              <strong>给吧台员工使用。</strong>员工接收已付款订单，依次操作“确认订单 → 开始制作 →
+              制作完成 → 顾客已取走”。系统只管理人工流程，不控制饮品机器。
+            </p>
+          </article>
+          <article class="card site-admin">
+            <div class="number">3</div>
+            <h3>Admin 管理后台</h3>
+            <p>
+              <strong>给店长和管理员使用。</strong
+              >用于查看订单、销售数据、员工、商品价格、门店策略、退款、人工审核和审计记录。
+            </p>
+          </article>
+        </div>
+        <div class="flow" aria-label="业务流程">
+          <div>顾客在 Kiosk 付款</div>
+          <div class="arrow">→</div>
+          <div>订单进入 KDS</div>
+          <div class="arrow">→</div>
+          <div>Admin 查看运营结果</div>
+        </div>
+      </section>
+
+      <section id="accounts">
+        <h2>三、演示账号和设备凭据</h2>
+        <h3>管理员 / KDS 员工登录</h3>
+        <dl class="credential">
+          <dt>Tenant / 租户</dt>
+          <dd>demo-nl</dd>
+          <dt>Username / 用户名</dt>
+          <dd>demo-owner</dd>
+          <dt>Password / 密码</dt>
+          <dd>DemoOwner!2026-NL</dd>
+        </dl>
+        <h3 style="margin-top: 26px">Kiosk 与 KDS 设备</h3>
+        <p>
+          设备的 <strong>ID</strong> 每台电脑首次创建时生成，因此请从启动窗口复制；开发演示 Key
+          固定如下：
+        </p>
+        <dl class="credential">
+          <dt>Kiosk Key</dt>
+          <dd>demo-kiosk-key-development-only-2026</dd>
+          <dt>KDS Endpoint Key</dt>
+          <dd>demo-kds-key-development-only-2026</dd>
+          <dt>Kiosk ID</dt>
+          <dd>从启动窗口复制 “Kiosk ID”</dd>
+          <dt>KDS Endpoint ID</dt>
+          <dd>从启动窗口复制 “Endpoint”</dd>
+        </dl>
+        <div class="warning">
+          <strong>仅供本机演示：</strong>这些账号、Key、Mock 支付和开发 JWT
+          严禁用于真实门店或生产环境。
+        </div>
+      </section>
+
+      <section id="demo">
+        <h2>四、推荐的完整演示流程</h2>
+        <ol class="steps">
+          <li>
+            <strong>先连接 Kitchen Display</strong>打开 KDS 页面，填写窗口打印的 API 地址、Endpoint
+            ID 和 Endpoint Key，再使用
+            <code>demo-nl / demo-owner / DemoOwner!2026-NL</code>
+            登录。保持这个页面开启，因为系统会用心跳确认确实有人可以人工制作。
+          </li>
+          <li>
+            <strong>打开 Kiosk 并配对</strong>填写相同 API 地址、窗口中的 Kiosk ID，以及固定 Kiosk
+            Key。进入点单页面。
+          </li>
+          <li>
+            <strong>模拟顾客点单</strong>选择一种饮品，选择规格或牛奶，加入购物车，检查数量、价格和
+            VAT，然后点击确认订单并执行模拟付款。成功后会显示订单号/取餐号。
+          </li>
+          <li>
+            <strong>回到 KDS 制作订单</strong>新订单会出现在待处理区。依次点击
+            Acknowledge（确认）、Start preparing（开始制作）、Mark ready（制作完成）、Mark
+            collected（已取走）。
+          </li>
+          <li>
+            <strong>登录 Admin 查看结果</strong>使用管理员账号登录。在 Dashboard 查看概览，在 Orders
+            查看订单，在 Reports 查看销售和履约统计，在 Audit 查看操作记录。
+          </li>
+          <li>
+            <strong>演示异常和人工审核（可选）</strong>再创建一笔订单，在 KDS
+            将其标为无法履约并填写原因。然后进入 Admin 的 Manual review
+            页面，接单并选择退款、重做或替代品等人工决定。
+          </li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>五、管理后台主要菜单</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>菜单</th>
+              <th>用途</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Dashboard</td>
+              <td>营业概览、订单数量、销售额、人工审核提醒。</td>
+            </tr>
+            <tr>
+              <td>Stores</td>
+              <td>查看门店，并设置是否接单、KDS 心跳时限和最大排队订单数。</td>
+            </tr>
+            <tr>
+              <td>Users</td>
+              <td>创建员工、分配角色、启用或停用账号。</td>
+            </tr>
+            <tr>
+              <td>Catalog & Pricing</td>
+              <td>建立分类、商品、税率和价格簿。</td>
+            </tr>
+            <tr>
+              <td>Orders</td>
+              <td>查询订单、支付状态、取餐号和履约状态。</td>
+            </tr>
+            <tr>
+              <td>Refunds</td>
+              <td>处理或对账退款。</td>
+            </tr>
+            <tr>
+              <td>Manual review</td>
+              <td>处理无法制作等异常事件，由人工决定退款、重做或替换。</td>
+            </tr>
+            <tr>
+              <td>Reports</td>
+              <td>销售、履约、退款与支付对账报表。</td>
+            </tr>
+            <tr>
+              <td>Audit</td>
+              <td>记录谁在什么时候做了什么操作，方便追责和排查。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="faq">
+        <h2>六、常见问题</h2>
+        <h3>提示 8000 端口被占用怎么办？</h3>
+        <p>
+          重新双击 <code>Start-Demo.cmd</code>。最新版会自动选择备用端口，无需手动
+          taskkill。看到黄色 Warning 不代表失败，继续等待最终地址即可。
+        </p>
+        <h3>Kiosk 提示暂时不能下单？</h3>
+        <p>
+          先确保 KDS
+          已完成设备连接并保持页面开启。真实商业流程不能在无人制作时继续收款，因此系统会检查 KDS
+          心跳。
+        </p>
+        <h3>网页打不开或数据没刷新？</h3>
+        <p>
+          确认启动窗口没有关闭；使用窗口最新打印的地址；然后按 <code>Ctrl+F5</code> 强制刷新网页。
+        </p>
+        <h3>这是正式支付吗？</h3>
+        <p>
+          不是。当前演示使用 Mock Payment Provider，只模拟支付成功/失败流程。接入 Adyen、Stripe 或
+          SumUp 及真实支付终端属于生产部署阶段。
+        </p>
+        <h3>会自动做饮品吗？</h3>
+        <p>
+          不会。本项目只负责点单、收付款、订单、人工制作看板和管理后台，不控制泵、阀、PLC、咖啡机或其他制饮硬件。
+        </p>
+      </section>
+    </main>
+    <footer class="wrap">
+      SipPilot 饮航 · Netherlands-first self-service ordering platform · 本页可直接双击打开或打印为
+      PDF
+    </footer>
+  </body>
+</html>
