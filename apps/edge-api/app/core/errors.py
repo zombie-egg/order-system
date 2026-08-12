@@ -40,5 +40,17 @@ class ForbiddenError(DomainError):
 
 
 class UnauthorizedError(DomainError):
-    def __init__(self, message: str = "Authentication required") -> None:
+    def __init__(
+        self,
+        message: str = "Authentication required",
+        *,
+        authenticate_header: str | None = "Bearer",
+    ) -> None:
         super().__init__("unauthorized", message, status_code=401)
+        self.authenticate_header = authenticate_header
+
+
+class TooManyRequestsError(DomainError):
+    def __init__(self, message: str, *, retry_after_seconds: int) -> None:
+        super().__init__("too_many_requests", message, status_code=429)
+        self.response_headers = {"Retry-After": str(max(1, retry_after_seconds))}

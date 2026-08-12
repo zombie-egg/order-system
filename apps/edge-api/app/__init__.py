@@ -1,1 +1,1 @@
-"""Smart Drink Edge API package."""
+"""SipPilot Edge API package."""

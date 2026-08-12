@@ -18,15 +18,21 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+$ProvidedParameters = @{}
+foreach ($ParameterName in $PSBoundParameters.Keys) {
+    $ProvidedParameters[$ParameterName] = $PSBoundParameters[$ParameterName]
+}
+
 $ProjectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $PythonExe = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
+$AlembicConfigPath = Join-Path $ProjectRoot "apps\edge-api\alembic.ini"
+$LocalEnvPath = Join-Path $ProjectRoot ".env"
 $NodeModulesPath = Join-Path $ProjectRoot "node_modules"
 $ViteCliPath = Join-Path $NodeModulesPath "vite\bin\vite.js"
 $ViteCliFromApp = "..\..\node_modules\vite\bin\vite.js"
 $LogDirectory = Join-Path $ProjectRoot "var\logs"
 $RunId = Get-Date -Format "yyyyMMdd-HHmmss-fff"
 $Processes = @()
-$Ports = @($ApiPort, $KioskPort, $KitchenDisplayPort, $AdminPort)
 
 function Repair-DuplicatePathEnvironmentVariable {
     $EnvironmentVariables = [System.Environment]::GetEnvironmentVariables()
@@ -56,6 +62,154 @@ function Repair-DuplicatePathEnvironmentVariable {
         ($PathSegments -join ";"),
         [System.EnvironmentVariableTarget]::Process
     )
+}
+
+function Invoke-NativeCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+
+        [string[]]$ArgumentList = @(),
+
+        [Parameter(Mandatory = $true)]
+        [string]$FailureMessage
+    )
+
+    & $FilePath @ArgumentList
+    if ($LASTEXITCODE -ne 0) {
+        throw "$FailureMessage Exit code: $LASTEXITCODE."
+    }
+}
+
+function Get-ConfiguredValue {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $ProcessValue = [System.Environment]::GetEnvironmentVariable(
+        $Name,
+        [System.EnvironmentVariableTarget]::Process
+    )
+    if (-not [string]::IsNullOrWhiteSpace($ProcessValue)) {
+        return $ProcessValue.Trim()
+    }
+
+    if (-not (Test-Path -LiteralPath $LocalEnvPath -PathType Leaf)) {
+        return $null
+    }
+
+    $Pattern = "^\s*" + [regex]::Escape($Name) + "\s*=(.*)$"
+    foreach ($Line in Get-Content -LiteralPath $LocalEnvPath -Encoding utf8) {
+        $Match = [regex]::Match(
+            $Line,
+            $Pattern,
+            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+        )
+        if (-not $Match.Success) {
+            continue
+        }
+
+        $Value = $Match.Groups[1].Value.Trim()
+        if ($Value.Length -ge 2) {
+            $FirstCharacter = $Value.Substring(0, 1)
+            $LastCharacter = $Value.Substring($Value.Length - 1, 1)
+            if (
+                ($FirstCharacter -eq '"' -and $LastCharacter -eq '"') -or
+                ($FirstCharacter -eq "'" -and $LastCharacter -eq "'")
+            ) {
+                $Value = $Value.Substring(1, $Value.Length - 2)
+            }
+        }
+        return $Value
+    }
+
+    return $null
+}
+
+function Resolve-DevelopmentPort {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ParameterName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$EnvironmentName,
+
+        [Parameter(Mandatory = $true)]
+        [int]$ExplicitValue,
+
+        [Parameter(Mandatory = $true)]
+        [int]$DefaultValue
+    )
+
+    if ($ProvidedParameters.ContainsKey($ParameterName)) {
+        return $ExplicitValue
+    }
+
+    $ConfiguredValue = Get-ConfiguredValue -Name $EnvironmentName
+    if ([string]::IsNullOrWhiteSpace($ConfiguredValue)) {
+        return $DefaultValue
+    }
+
+    $ParsedValue = 0
+    if (
+        -not [int]::TryParse($ConfiguredValue, [ref]$ParsedValue) -or
+        $ParsedValue -lt 1 -or
+        $ParsedValue -gt 65535
+    ) {
+        throw "$EnvironmentName must be an integer from 1 through 65535. Found: $ConfiguredValue"
+    }
+    return $ParsedValue
+}
+
+function Get-DevelopmentCorsOrigins {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int[]]$FrontendPorts
+    )
+
+    $Origins = @()
+    $ConfiguredValue = Get-ConfiguredValue -Name "CORS_ORIGINS"
+    if (-not [string]::IsNullOrWhiteSpace($ConfiguredValue)) {
+        if (-not $ConfiguredValue.TrimStart().StartsWith("[")) {
+            throw "CORS_ORIGINS must be a JSON array of HTTP origins."
+        }
+        try {
+            $ConfiguredOrigins = $ConfiguredValue | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            throw "CORS_ORIGINS must be a JSON array of HTTP origins. $($_.Exception.Message)"
+        }
+        foreach ($ConfiguredOrigin in $ConfiguredOrigins) {
+            $Origins += [string]$ConfiguredOrigin
+        }
+    }
+
+    foreach ($FrontendPort in $FrontendPorts) {
+        $Origins += "http://localhost:$FrontendPort"
+        $Origins += "http://127.0.0.1:$FrontendPort"
+    }
+
+    $NormalizedOrigins = @(
+        $Origins |
+            ForEach-Object { ([string]$_).Trim().TrimEnd("/") } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -Unique
+    )
+    foreach ($Origin in $NormalizedOrigins) {
+        $ParsedOrigin = $null
+        if (
+            -not [uri]::TryCreate($Origin, [System.UriKind]::Absolute, [ref]$ParsedOrigin) -or
+            $ParsedOrigin.Scheme -notin @("http", "https") -or
+            $ParsedOrigin.AbsolutePath -ne "/" -or
+            -not [string]::IsNullOrEmpty($ParsedOrigin.Query) -or
+            -not [string]::IsNullOrEmpty($ParsedOrigin.Fragment) -or
+            -not [string]::IsNullOrEmpty($ParsedOrigin.UserInfo)
+        ) {
+            throw "CORS_ORIGINS contains an invalid HTTP origin: $Origin"
+        }
+    }
+    return $NormalizedOrigins
 }
 
 function Start-LoggedProcess {
@@ -166,8 +320,14 @@ function Assert-ProcessRunning {
 
     $Entry.Process.Refresh()
     if ($Entry.Process.HasExited) {
+        $Entry.Process.WaitForExit(5000) | Out-Null
+        $Entry.Process.Refresh()
         Write-ProcessLogTail -Entry $Entry
-        throw "$($Entry.Name) exited with code $($Entry.Process.ExitCode)."
+        $ExitCode = $Entry.Process.ExitCode
+        if ($null -eq $ExitCode -or [string]::IsNullOrWhiteSpace([string]$ExitCode)) {
+            $ExitCode = "unknown"
+        }
+        throw "$($Entry.Name) exited before becoming ready (exit code: $ExitCode)."
     }
 }
 
@@ -247,6 +407,37 @@ if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
     throw "Virtual environment not found. Run .\scripts\bootstrap.ps1 first."
 }
 
+if (-not (Test-Path -LiteralPath $AlembicConfigPath -PathType Leaf)) {
+    throw "Alembic configuration not found: $AlembicConfigPath"
+}
+
+$ApiPort = Resolve-DevelopmentPort `
+    -ParameterName "ApiPort" `
+    -EnvironmentName "API_PORT" `
+    -ExplicitValue $ApiPort `
+    -DefaultValue 8000
+$KioskPort = Resolve-DevelopmentPort `
+    -ParameterName "KioskPort" `
+    -EnvironmentName "KIOSK_PORT" `
+    -ExplicitValue $KioskPort `
+    -DefaultValue 5173
+$KitchenDisplayPort = Resolve-DevelopmentPort `
+    -ParameterName "KitchenDisplayPort" `
+    -EnvironmentName "KITCHEN_DISPLAY_PORT" `
+    -ExplicitValue $KitchenDisplayPort `
+    -DefaultValue 5174
+$AdminPort = Resolve-DevelopmentPort `
+    -ParameterName "AdminPort" `
+    -EnvironmentName "ADMIN_PORT" `
+    -ExplicitValue $AdminPort `
+    -DefaultValue 5175
+
+$FrontendPorts = @($KioskPort, $KitchenDisplayPort, $AdminPort)
+$Ports = @($ApiPort) + $FrontendPorts
+if (@($Ports | Select-Object -Unique).Count -ne $Ports.Count) {
+    throw "API_PORT, KIOSK_PORT, KITCHEN_DISPLAY_PORT, and ADMIN_PORT must be unique."
+}
+
 Repair-DuplicatePathEnvironmentVariable
 
 $NodeCommand = Get-Command -Name "node.exe" -CommandType Application -ErrorAction SilentlyContinue
@@ -262,105 +453,159 @@ foreach ($Port in $Ports) {
     Assert-TcpPortAvailable -Port $Port
 }
 
-New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
+$DevelopmentCorsOrigins = Get-DevelopmentCorsOrigins -FrontendPorts $FrontendPorts
+$RuntimeEnvironmentVariables = [ordered]@{
+    SMART_DRINK_ENV_FILE = $LocalEnvPath
+    PYTHONUTF8 = "1"
+    API_HOST = "127.0.0.1"
+    API_PORT = $ApiPort.ToString()
+    KIOSK_PORT = $KioskPort.ToString()
+    KITCHEN_DISPLAY_PORT = $KitchenDisplayPort.ToString()
+    ADMIN_PORT = $AdminPort.ToString()
+    CORS_ORIGINS = ConvertTo-Json -InputObject @($DevelopmentCorsOrigins) -Compress
+}
+$PreviousRuntimeEnvironment = @{}
+foreach ($Name in $RuntimeEnvironmentVariables.Keys) {
+    $PreviousRuntimeEnvironment[$Name] = [System.Environment]::GetEnvironmentVariable(
+        $Name,
+        [System.EnvironmentVariableTarget]::Process
+    )
+    [System.Environment]::SetEnvironmentVariable(
+        $Name,
+        [string]$RuntimeEnvironmentVariables[$Name],
+        [System.EnvironmentVariableTarget]::Process
+    )
+}
 
 try {
-    $Processes += Start-LoggedProcess `
-        -Name "edge-api" `
-        -FilePath $PythonExe `
-        -ArgumentList @(
-            "-m",
-            "uvicorn",
-            "app.main:app",
-            "--app-dir",
-            "apps\edge-api",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            $ApiPort.ToString()
-        ) `
-        -WorkingDirectory $ProjectRoot
+    Push-Location $ProjectRoot
+    try {
+        Invoke-NativeCommand `
+            -FilePath $PythonExe `
+            -ArgumentList @(
+                "-m",
+                "alembic",
+                "-c",
+                $AlembicConfigPath,
+                "upgrade",
+                "head"
+            ) `
+            -FailureMessage "Failed to upgrade the local database schema."
+    }
+    finally {
+        Pop-Location
+    }
 
-    $Processes += Start-LoggedProcess `
-        -Name "kiosk" `
-        -FilePath $NodeCommand.Source `
-        -ArgumentList @(
-            $ViteCliFromApp,
-            "--host",
-            "127.0.0.1",
-            "--port",
-            $KioskPort.ToString(),
-            "--strictPort"
-        ) `
-        -WorkingDirectory (Join-Path $ProjectRoot "apps\kiosk-web")
+    New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
 
-    $Processes += Start-LoggedProcess `
-        -Name "kitchen-display" `
-        -FilePath $NodeCommand.Source `
-        -ArgumentList @(
-            $ViteCliFromApp,
-            "--host",
-            "127.0.0.1",
-            "--port",
-            $KitchenDisplayPort.ToString(),
-            "--strictPort"
-        ) `
-        -WorkingDirectory (Join-Path $ProjectRoot "apps\kitchen-display-web")
+    try {
+        $Processes += Start-LoggedProcess `
+            -Name "edge-api" `
+            -FilePath $PythonExe `
+            -ArgumentList @(
+                "-m",
+                "uvicorn",
+                "app.main:app",
+                "--app-dir",
+                "apps\edge-api",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                $ApiPort.ToString(),
+                "--no-access-log"
+            ) `
+            -WorkingDirectory $ProjectRoot
 
-    $Processes += Start-LoggedProcess `
-        -Name "admin" `
-        -FilePath $NodeCommand.Source `
-        -ArgumentList @(
-            $ViteCliFromApp,
-            "--host",
-            "127.0.0.1",
-            "--port",
-            $AdminPort.ToString(),
-            "--strictPort"
-        ) `
-        -WorkingDirectory (Join-Path $ProjectRoot "apps\admin-web")
+        $Processes += Start-LoggedProcess `
+            -Name "kiosk" `
+            -FilePath $NodeCommand.Source `
+            -ArgumentList @(
+                $ViteCliFromApp,
+                "--host",
+                "127.0.0.1",
+                "--port",
+                $KioskPort.ToString(),
+                "--strictPort"
+            ) `
+            -WorkingDirectory (Join-Path $ProjectRoot "apps\kiosk-web")
 
-    Wait-ForHttpEndpoint `
-        -Uri "http://127.0.0.1:$ApiPort/api/v1/health/ready" `
-        -Entry ($Processes | Where-Object Name -eq "edge-api")
-    Wait-ForHttpEndpoint `
-        -Uri "http://127.0.0.1:$KioskPort" `
-        -Entry ($Processes | Where-Object Name -eq "kiosk")
-    Wait-ForHttpEndpoint `
-        -Uri "http://127.0.0.1:$KitchenDisplayPort" `
-        -Entry ($Processes | Where-Object Name -eq "kitchen-display")
-    Wait-ForHttpEndpoint `
-        -Uri "http://127.0.0.1:$AdminPort" `
-        -Entry ($Processes | Where-Object Name -eq "admin")
+        $Processes += Start-LoggedProcess `
+            -Name "kitchen-display" `
+            -FilePath $NodeCommand.Source `
+            -ArgumentList @(
+                $ViteCliFromApp,
+                "--host",
+                "127.0.0.1",
+                "--port",
+                $KitchenDisplayPort.ToString(),
+                "--strictPort"
+            ) `
+            -WorkingDirectory (Join-Path $ProjectRoot "apps\kitchen-display-web")
 
-    Write-Host "All development services are ready."
-    Write-Host "Kiosk:           http://127.0.0.1:$KioskPort"
-    Write-Host "Kitchen Display: http://127.0.0.1:$KitchenDisplayPort"
-    Write-Host "Admin:           http://127.0.0.1:$AdminPort"
-    Write-Host "API docs:        http://127.0.0.1:$ApiPort/docs"
-    Write-Host "Logs:            $LogDirectory"
+        $Processes += Start-LoggedProcess `
+            -Name "admin" `
+            -FilePath $NodeCommand.Source `
+            -ArgumentList @(
+                $ViteCliFromApp,
+                "--host",
+                "127.0.0.1",
+                "--port",
+                $AdminPort.ToString(),
+                "--strictPort"
+            ) `
+            -WorkingDirectory (Join-Path $ProjectRoot "apps\admin-web")
+
+        Wait-ForHttpEndpoint `
+            -Uri "http://127.0.0.1:$ApiPort/api/v1/health/ready" `
+            -Entry ($Processes | Where-Object Name -eq "edge-api")
+        Wait-ForHttpEndpoint `
+            -Uri "http://127.0.0.1:$KioskPort" `
+            -Entry ($Processes | Where-Object Name -eq "kiosk")
+        Wait-ForHttpEndpoint `
+            -Uri "http://127.0.0.1:$KitchenDisplayPort" `
+            -Entry ($Processes | Where-Object Name -eq "kitchen-display")
+        Wait-ForHttpEndpoint `
+            -Uri "http://127.0.0.1:$AdminPort" `
+            -Entry ($Processes | Where-Object Name -eq "admin")
+
+        Write-Host "All development services are ready."
+        Write-Host "Kiosk:           http://127.0.0.1:$KioskPort"
+        Write-Host "Kitchen Display: http://127.0.0.1:$KitchenDisplayPort"
+        Write-Host "Admin:           http://127.0.0.1:$AdminPort"
+        Write-Host "API docs:        http://127.0.0.1:$ApiPort/docs"
+        Write-Host "Logs:            $LogDirectory"
+
+        if ($StartupCheck) {
+            Write-Host "Startup check passed; stopping development services."
+        }
+        else {
+            Write-Host "Press Ctrl+C to stop all processes."
+
+            while ($true) {
+                foreach ($Entry in $Processes) {
+                    Assert-ProcessRunning -Entry $Entry
+                }
+                Start-Sleep -Seconds 1
+            }
+        }
+    }
+    finally {
+        foreach ($Entry in $Processes) {
+            Stop-TrackedProcess -Entry $Entry
+        }
+        Wait-ForPortsReleased -PortList $Ports
+    }
 
     if ($StartupCheck) {
-        Write-Host "Startup check passed; stopping development services."
-    }
-    else {
-        Write-Host "Press Ctrl+C to stop all processes."
-
-        while ($true) {
-            foreach ($Entry in $Processes) {
-                Assert-ProcessRunning -Entry $Entry
-            }
-            Start-Sleep -Seconds 1
-        }
+        Write-Host "Startup and cleanup checks passed."
     }
 }
 finally {
-    foreach ($Entry in $Processes) {
-        Stop-TrackedProcess -Entry $Entry
+    foreach ($Name in $RuntimeEnvironmentVariables.Keys) {
+        [System.Environment]::SetEnvironmentVariable(
+            $Name,
+            $PreviousRuntimeEnvironment[$Name],
+            [System.EnvironmentVariableTarget]::Process
+        )
     }
-}
-
-if ($StartupCheck) {
-    Wait-ForPortsReleased -PortList $Ports
-    Write-Host "Startup and cleanup checks passed."
 }

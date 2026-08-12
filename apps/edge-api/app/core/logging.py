@@ -15,13 +15,17 @@ class JsonFormatter(logging.Formatter):
             "message": record.getMessage(),
         }
 
-        for field in ("app_version", "app_env", "correlation_id"):
+        for field in (
+            "app_version",
+            "app_env",
+            "correlation_id",
+            "request_method",
+            "request_path",
+            "exception_type",
+        ):
             value = getattr(record, field, None)
             if value is not None:
                 payload[field] = value
-
-        if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
 
         return json.dumps(payload, ensure_ascii=False)
 

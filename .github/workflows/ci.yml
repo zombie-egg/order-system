@@ -4,9 +4,13 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,10 +21,82 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
+          cache-dependency-path: apps/edge-api/pyproject.toml
       - run: npm ci
       - run: npm run check:frontend
+      - run: python -m venv .venv
+      - run: .\.venv\Scripts\python.exe -m pip install -e "apps/edge-api[dev]"
+      - run: .\.venv\Scripts\python.exe -m ruff format --check apps/edge-api
+      - run: .\.venv\Scripts\python.exe -m ruff check apps/edge-api
+      - run: .\.venv\Scripts\python.exe -m mypy apps/edge-api/app apps/edge-api/migrations apps/edge-api/tests
+      - run: .\.venv\Scripts\python.exe -m pytest apps/edge-api/tests
+      - name: PowerShell 5.1 startup and cleanup check
+        shell: powershell
+        run: |
+          Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+          .\scripts\dev.ps1 -StartupCheck -ApiPort 18000 -KioskPort 15173 `
+            -KitchenDisplayPort 15174 -AdminPort 15175
+
+  postgresql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: smartdrink
+          POSTGRES_USER: smartdrink
+          POSTGRES_PASSWORD: smartdrink-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smartdrink -d smartdrink"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: staging
+      JWT_SECRET: ci-only-secret-that-is-longer-than-thirty-two-characters
+      MOCK_PAYMENT_ENABLED: 'false'
+      DATABASE_URL: postgresql+psycopg://smartdrink:smartdrink-ci@127.0.0.1:5432/smartdrink?connect_timeout=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: apps/edge-api/pyproject.toml
       - run: python -m pip install -e "apps/edge-api[dev]"
-      - run: python -m ruff format --check apps/edge-api
-      - run: python -m ruff check apps/edge-api
-      - run: python -m mypy apps/edge-api/app
-      - run: python -m pytest apps/edge-api/tests
+      - name: Upgrade and probe PostgreSQL schema
+        run: |
+          python -m alembic -c apps/edge-api/alembic.ini upgrade head
+          python - <<'PY'
+          import asyncio
+          import os
+
+          from sqlalchemy import text
+
+          from app.persistence.database import Database
+
+
+          async def verify() -> None:
+              database = Database(os.environ["DATABASE_URL"])
+              try:
+                  await database.ping()
+                  async with database.engine.connect() as connection:
+                      table_count = await connection.scalar(
+                          text(
+                              "SELECT COUNT(*) FROM information_schema.tables "
+                              "WHERE table_schema = 'public' "
+                              "AND table_name IN ('alembic_version', 'sales_order')"
+                          )
+                      )
+                  if table_count != 2:
+                      raise RuntimeError("Expected migrated PostgreSQL tables are missing")
+              finally:
+                  await database.dispose()
+
+
+          asyncio.run(verify())
+          PY
+      - run: python -m alembic -c apps/edge-api/alembic.ini downgrade base

@@ -35,16 +35,21 @@ class Database:
     @staticmethod
     def _configure_sqlite(dbapi_connection: object, _: object) -> None:
         cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+        try:
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA busy_timeout=30000")
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+        finally:
+            cursor.close()
 
     async def session(self) -> AsyncIterator[AsyncSession]:
         async with self.session_factory() as session:
             yield session
 
     async def ping(self) -> None:
-        async with self.session_factory() as session:
-            await session.execute(text("SELECT 1"))
+        async with self.engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
 
     async def dispose(self) -> None:
         await self.engine.dispose()

@@ -8,6 +8,7 @@ $ProjectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $VirtualEnvPath = Join-Path $ProjectRoot ".venv"
 $PythonExe = Join-Path $VirtualEnvPath "Scripts\python.exe"
 $EdgeApiPath = Join-Path $ProjectRoot "apps\edge-api"
+$AlembicConfigPath = Join-Path $EdgeApiPath "alembic.ini"
 $LocalEnvPath = Join-Path $ProjectRoot ".env"
 $ExampleEnvPath = Join-Path $ProjectRoot ".env.example"
 $PackageLockPath = Join-Path $ProjectRoot "package-lock.json"
@@ -95,7 +96,15 @@ Invoke-NativeCommand `
 
 Invoke-NativeCommand `
     -FilePath $PythonExe `
-    -ArgumentList @("-m", "pip", "install", "--disable-pip-version-check", "--upgrade", "pip") `
+    -ArgumentList @(
+        "-m",
+        "pip",
+        "install",
+        "--disable-pip-version-check",
+        "--no-input",
+        "--upgrade",
+        "pip"
+    ) `
     -FailureMessage "Failed to upgrade pip."
 
 $EditableRequirement = "${EdgeApiPath}[dev]"
@@ -106,10 +115,49 @@ Invoke-NativeCommand `
         "pip",
         "install",
         "--disable-pip-version-check",
+        "--no-input",
         "--editable",
         $EditableRequirement
     ) `
     -FailureMessage "Failed to install Python dependencies."
+
+New-Item -ItemType Directory -Path $RuntimePath -Force | Out-Null
+
+$PreviousSettingsEnvFile = [System.Environment]::GetEnvironmentVariable(
+    "SMART_DRINK_ENV_FILE",
+    [System.EnvironmentVariableTarget]::Process
+)
+[System.Environment]::SetEnvironmentVariable(
+    "SMART_DRINK_ENV_FILE",
+    $LocalEnvPath,
+    [System.EnvironmentVariableTarget]::Process
+)
+try {
+    Push-Location $ProjectRoot
+    try {
+        Invoke-NativeCommand `
+            -FilePath $PythonExe `
+            -ArgumentList @(
+                "-m",
+                "alembic",
+                "-c",
+                $AlembicConfigPath,
+                "upgrade",
+                "head"
+            ) `
+            -FailureMessage "Failed to upgrade the local database schema."
+    }
+    finally {
+        Pop-Location
+    }
+}
+finally {
+    [System.Environment]::SetEnvironmentVariable(
+        "SMART_DRINK_ENV_FILE",
+        $PreviousSettingsEnvFile,
+        [System.EnvironmentVariableTarget]::Process
+    )
+}
 
 $NodeCommand = Get-Command -Name "node.exe" -CommandType Application -ErrorAction SilentlyContinue
 if ($null -eq $NodeCommand) {

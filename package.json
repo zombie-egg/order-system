@@ -11,7 +11,9 @@
   "workspaces": [
     "apps/kiosk-web",
     "apps/kitchen-display-web",
-    "apps/admin-web"
+    "apps/admin-web",
+    "packages/contracts",
+    "packages/api-client"
   ],
   "scripts": {
     "dev:kiosk": "npm run dev --workspace @smart-drink/kiosk-web",

@@ -30,8 +30,19 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 The API and web applications run natively. Docker is only needed when a developer chooses the PostgreSQL profile.
 
+The bootstrap and development scripts apply the current Alembic migration before starting the API. Runtime SQLite files use foreign keys, a 30-second busy timeout, WAL mode, and `synchronous=NORMAL`; keep them on a local NTFS disk.
+
+`dev.ps1` reads `API_PORT`, `KIOSK_PORT`, `KITCHEN_DISPLAY_PORT`, and `ADMIN_PORT` from the process environment or root `.env`. Explicit script parameters take precedence, for example:
+
+```powershell
+.\scripts\dev.ps1 -StartupCheck -ApiPort 18000 -KioskPort 15173 `
+  -KitchenDisplayPort 15174 -AdminPort 15175
+```
+
+The script rejects duplicate or occupied ports, adds the effective frontend loopback origins to the API CORS configuration, applies migrations, and restores its temporary process-environment overrides during cleanup.
+
 The execution-policy change applies only to the current PowerShell process and reverts when that window closes. Do not use a permanent `Unrestricted` policy for this project.
 
-## Future production work
+## Current production boundary
 
-The Edge API, Worker, and Windows Agent will become Windows Services. The public terminal will use Microsoft Edge Kiosk mode or a minimal WebView2 host. Production packaging, service accounts, firewall rules, disk encryption, and signed updates are outside Phase 2.
+The Phase 3 Backend is a development-ready transaction service, not yet a Windows production installation. Edge API/Worker/Windows Agent service registration, service accounts, firewall rules, BitLocker policy, signed updates, backup/restore drills, credential rotation, real PSP certification, and kiosk lockdown remain later deployment work. The public terminal will use Microsoft Edge Kiosk mode or a minimal WebView2 host.

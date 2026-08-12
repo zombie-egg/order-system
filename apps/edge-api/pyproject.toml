@@ -5,12 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "smart-drink-edge-api"
 version = "0.1.0"
-description = "Windows edge API scaffold for the Smart Drink Kiosk Platform."
+description = "Windows edge API for the SipPilot self-service ordering platform."
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "alembic>=1.16,<2",
   "aiosqlite>=0.21,<1",
-  "fastapi>=0.116,<1",
+  "argon2-cffi>=25.1,<26",
+  "fastapi>=0.141,<1",
+  "PyJWT>=2.10,<3",
   "pydantic-settings>=2.10,<3",
   "psycopg[binary]>=3.2,<4",
   "sqlalchemy[asyncio]>=2.0,<3",
