@@ -1,6 +1,6 @@
 # SipPilot 饮航
 
-> Self-service ordering, payment & store fulfillment platform  
+> Self-service ordering, payment & store fulfillment platform<br>
 > 自助点单、收付款与门店人工履约平台
 
 荷兰饮品店自助点餐、收款与人工履约平台，形态类似 McDonald's / KFC 自助点餐终端。当前已完成 **Phase 5：Commercial Device UI**：后端交易闭环、Kiosk、KDS、Admin 三套业务前端，以及面向商用设备的触屏、状态恢复、视觉层级和安全边界均已实现。
