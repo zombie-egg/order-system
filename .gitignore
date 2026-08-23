@@ -43,3 +43,6 @@ Desktop.ini
 .cache/
 tmp/
 temp/
+
+# Generated TLS material for the single-host deployment
+deploy/tls/

@@ -71,6 +71,12 @@ services:
     restart: unless-stopped
     ports:
       - '${HTTP_PORT:-80}:80'
+      - '${HTTPS_PORT:-443}:443'
+    volumes:
+      # Self-signed certificate generated on the host by deploy/make-cert.sh.
+      # Replace with a CA-issued pair, or front the stack with Caddy, once a
+      # domain is available.
+      - ./tls:/etc/nginx/tls:ro
     depends_on:
       - api
 

@@ -30,7 +30,10 @@ cp deploy/.env.production.example deploy/.env.production
 openssl rand -hex 32      # → JWT_SECRET
 openssl rand -base64 24   # → POSTGRES_PASSWORD
 
-# 3. 启动（首次会构建镜像，约几分钟）
+# 3. 生成 TLS 证书（不带参数则自动探测公网 IP）
+./deploy/make-cert.sh
+
+# 4. 启动（首次会构建镜像，约几分钟）
 docker compose -f deploy/compose.prod.yaml --env-file deploy/.env.production up -d --build
 ```
 
@@ -73,19 +76,34 @@ alias sp='docker compose -f deploy/compose.prod.yaml --env-file deploy/.env.prod
 
 ## HTTPS
 
-Nginx 容器只监听 80 端口，明文。生产环境必须在前面加 TLS，两种做法：
+Nginx 在 443 上提供 TLS，80 端口只做跳转（`/healthz` 除外，容器健康检查要用）。
 
-**推荐 · 宿主机 Caddy 或 Nginx 反代**：把 `HTTP_PORT` 改成 `8080`，然后由宿主机上的 Caddy 处理证书（自动签发续期）：
+**必须走 HTTPS**，不是可选项：kiosk 和厨房看板前端的 `normalizeApiBaseUrl` 拒绝「非 loopback 且非 HTTPS」的 API 地址，所以明文访问时这两个页面连不上后端。
+
+### 当前：自签证书
+
+```bash
+./deploy/make-cert.sh              # 自动探测公网 IP
+./deploy/make-cert.sh shop.example # 或指定主机名
+```
+
+证书写到 `deploy/tls/`（已在 .gitignore 中，不会提交），由 web 容器只读挂载。有效期 825 天。
+
+浏览器会显示「不安全」警告，需要手动点「继续访问」——自签证书的固有表现，不是配置错误。首次在 kiosk 和看板设备上打开时，都要各自确认一次，否则前端的 `fetch` 会静默失败。
+
+### 有域名后：换成 CA 签发证书
+
+推荐宿主机装 Caddy，自动签发和续期：把 `HTTPS_PORT` 改成 `8443`，然后
 
 ```
 shop.example.com {
-    reverse_proxy 127.0.0.1:8080
+    reverse_proxy https://127.0.0.1:8443 {
+        transport http { tls_insecure_skip_verify }
+    }
 }
 ```
 
-**或者**在 compose 里加一个 Caddy/Traefik 容器接管 80/443。
-
-没上 TLS 之前有两个实际后果：后台登录凭据明文传输；kiosk 和看板前端的 `normalizeApiBaseUrl` 只允许非 loopback 地址走 HTTPS，所以用域名明文访问时它们会拒绝连接。
+或者直接把 CA 签发的 `server.crt` / `server.key` 覆盖到 `deploy/tls/`，然后 `docker compose restart web`。
 
 ## 数据持久化
 
@@ -100,7 +118,7 @@ shop.example.com {
 
 - [ ] `JWT_SECRET` 已生成且不少于 32 字节（改这个值会让所有已签发的员工令牌失效）
 - [ ] `POSTGRES_PASSWORD` 已改成随机值
-- [ ] TLS 已配置
+- [ ] TLS 已配置（自签证书够用，但每台设备首次访问要手动信任）
 - [ ] `MOCK_PAYMENT_ENABLED` 保持 `false`（compose 已写死；`APP_ENV=production` 下若为 true，API 会拒绝启动）
 - [ ] 后台管理是内部系统，考虑在 TLS 层给 `/admin/` 和 `/kds/` 限制来源 IP 或加一层认证——目前它们和顾客点单页一样对公网开放，只靠应用自身的登录保护
 
