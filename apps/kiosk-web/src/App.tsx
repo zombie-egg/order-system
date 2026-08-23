@@ -18,6 +18,10 @@ import {
 } from './format';
 import { ProductCustomizer } from './ProductCustomizer';
 import { ReceiptView } from './ReceiptView';
+import {
+  SterlingGateKineticNavigation,
+  type KineticMenuItem,
+} from './components/ui/sterling-gate-kinetic-navigation';
 import type {
   CartLine,
   CatalogProduct,
@@ -53,12 +57,49 @@ const settledPaymentStatuses = new Set([
 const DEVICE_REFRESH_INTERVAL_MS = 30_000;
 const CHECKOUT_SESSION_KEY = 'smart-drink:kiosk-checkout-session';
 const CHECKOUT_SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
-const checkoutSteps: Array<{ id: CheckoutStep; label: string }> = [
-  { id: 'browse', label: 'Kiezen' },
-  { id: 'review', label: 'Controleren' },
-  { id: 'payment', label: 'Betalen' },
-  { id: 'result', label: 'Gereed' },
-];
+const kioskCopy = {
+  'zh-CN': {
+    steps: ['点餐', '确认', '支付', '完成'],
+    brand: '开始点单',
+    progress: '点单进度',
+    checking: '正在连接', online: '已连接', offline: '无连接', changeKiosk: '更换设备',
+    menu: '饮品菜单', assortment: '精选饮品', freshlyMade: '现点现做', choices: '种选择',
+    explore: '探索菜单', add: '加入', cart: '购物车', order: '你的订单', emptyCart: '请选择饮品开始点单。',
+    estimated: '预计总价', vat: '最终税费与优惠将在下一步计算。', review: '确认订单',
+    loading: '正在加载菜单', wait: '请稍候…', unavailable: '菜单暂不可用', device: '修改设备信息',
+    paused: '暂时无法点单', pausedDetail: '请联系店员，或稍后再试。', retry: '重新检查',
+    checkOrder: '确认订单信息', edit: '修改', subtotal: '小计', discount: '优惠', tax: '税费', total: '合计',
+    taxIncluded: '价格已含税。', taxAdded: '税费已加入总价。', paymentHow: '请选择支付方式',
+    contactless: '非接触式支付', contactlessHint: '银行卡、手机或智能穿戴设备', card: '银行卡', cardHint: '请将卡插入支付终端',
+    pay: '支付', processing: '请按支付终端上的提示操作，请勿关闭此页面。', refresh: '刷新状态',
+    thankYou: '谢谢！', received: '已收到付款', pickup: '取餐号', preparing: '订单正在制作中。',
+  },
+  'nl-NL': {
+    steps: ['Kiezen', 'Controleren', 'Betalen', 'Gereed'],
+    brand: 'Bestel hier',
+    progress: 'Voortgang van je bestelling',
+    checking: 'Controleren', online: 'Verbonden', offline: 'Geen verbinding', changeKiosk: 'Kiosk wisselen',
+    menu: 'Menu', assortment: 'Ons assortiment', freshlyMade: 'Vers bereid door ons team', choices: 'keuzes',
+    explore: 'Ontdek menu', add: 'Toevoegen', cart: 'Winkelmand', order: 'Je bestelling', emptyCart: 'Kies een drankje om te beginnen.',
+    estimated: 'Geschat totaal', vat: 'Definitieve BTW en kortingen worden hierna berekend.', review: 'Bestelling controleren',
+    loading: 'Menu wordt geladen', wait: 'Even geduld…', unavailable: 'Menu niet beschikbaar', device: 'Apparaatgegevens wijzigen',
+    paused: 'Nieuwe bestellingen zijn gepauzeerd', pausedDetail: 'Vraag een medewerker om hulp of probeer het later opnieuw.', retry: 'Opnieuw controleren',
+    checkOrder: 'Klopt je bestelling?', edit: 'Wijzigen', subtotal: 'Subtotaal', discount: 'Korting', tax: 'BTW', total: 'Totaal',
+    taxIncluded: 'Prijzen zijn inclusief BTW.', taxAdded: 'BTW is toegevoegd aan het totaal.', paymentHow: 'Hoe wil je betalen?',
+    contactless: 'Contactloos', contactlessHint: 'Kaart, telefoon of wearable', card: 'Betaalkaart', cardHint: 'Steek de kaart in de terminal',
+    pay: 'Betalen', processing: 'Volg de instructies op de betaalterminal. Sluit dit scherm niet.', refresh: 'Status vernieuwen',
+    thankYou: 'Bedankt!', received: 'Betaling ontvangen', pickup: 'Afhaalnummer', preparing: 'Je bestelling wordt door ons team bereid.',
+  },
+} as const;
+
+function checkoutStepsFor(locale: 'zh-CN' | 'nl-NL'): Array<{ id: CheckoutStep; label: string }> {
+  return [
+    { id: 'browse', label: kioskCopy[locale].steps[0] },
+    { id: 'review', label: kioskCopy[locale].steps[1] },
+    { id: 'payment', label: kioskCopy[locale].steps[2] },
+    { id: 'result', label: kioskCopy[locale].steps[3] },
+  ];
+}
 
 interface CheckoutSessionSnapshot {
   version: 1;
@@ -299,8 +340,11 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
   const [initialCheckout] = useState(readCheckoutSession);
   const [api, setApi] = useState<KioskApi | null>(() => providedApi ?? createConfiguredKioskApi());
   const [catalog, setCatalog] = useState<StoreCatalog | null>(null);
-  const [locale] = useState(initialLocale);
+  const [locale, setLocale] = useState<'zh-CN' | 'nl-NL'>(
+    initialLocale === 'zh-CN' ? 'zh-CN' : 'nl-NL',
+  );
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(true);
   const [cart, setCart] = useState<CartLine[]>(() => initialCheckout?.cart ?? []);
   const [customizing, setCustomizing] = useState<CatalogProduct | null>(null);
   const [step, setStep] = useState<CheckoutStep>(() => recoveredStep(initialCheckout));
@@ -463,6 +507,13 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
     catalog?.categories.find((category) => category.id === selectedCategoryId) ??
     catalog?.categories[0] ??
     null;
+  const copy = kioskCopy[locale];
+  const checkoutSteps: Array<{ id: CheckoutStep; label: string }> = checkoutStepsFor(locale);
+  const kineticMenuItems: KineticMenuItem[] = (catalog?.categories ?? []).map((category) => ({
+    id: category.id,
+    label: category.name,
+    detail: locale === 'zh-CN' ? `${category.products.length} 种现调饮品` : `${category.products.length} vers bereide dranken`,
+  }));
   const cartQuantity = cart.reduce((total, line) => total + line.quantity, 0);
   const estimatedTotal = cart.reduce((total, line) => total + cartLineTotal(line), 0);
   const activeCurrency = catalog?.currency ?? quote?.currency ?? order?.currency ?? 'EUR';
@@ -789,6 +840,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
     setReceipts([]);
     setError(null);
     setStep('browse');
+    setIsCategoryMenuOpen(true);
     clearCheckoutSession();
     orderKeyRef.current = null;
     retryKeyRef.current = null;
@@ -802,8 +854,8 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
     return (
       <main className="loading-page" aria-live="polite" aria-busy="true">
         <div className="spinner" aria-hidden="true" />
-        <h1>Menu wordt geladen</h1>
-        <p>Even geduld…</p>
+        <h1>{copy.loading}</h1>
+        <p>{copy.wait}</p>
       </main>
     );
   }
@@ -811,11 +863,11 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
   if (!catalog) {
     return (
       <main className="loading-page">
-        <h1>Menu niet beschikbaar</h1>
+        <h1>{copy.unavailable}</h1>
         {error && <ErrorNotice error={error} onRetry={() => void loadCatalog()} />}
         {!providedApi && (
           <button className="text-button" type="button" onClick={disconnectDevice}>
-            Apparaatgegevens wijzigen
+            {copy.device}
           </button>
         )}
       </main>
@@ -830,17 +882,17 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
           type="button"
           onClick={newOrder}
           disabled={!canResetOrder}
-          aria-label="Nieuwe bestelling"
+          aria-label={copy.brand}
         >
           <span className="brand-mark" aria-hidden="true">
             S
           </span>
           <span>
             <strong>SipPilot</strong>
-            <small>Bestel hier</small>
+            <small>{copy.brand}</small>
           </span>
         </button>
-        <ol className="step-indicator" aria-label="Voortgang van je bestelling">
+        <ol className="step-indicator" aria-label={copy.progress}>
           {checkoutSteps.map((item, index) => (
             <li
               className={step === item.id ? 'active' : index < currentStepIndex ? 'complete' : ''}
@@ -858,17 +910,21 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
             aria-live="polite"
             title={
               connectionState === 'online'
-                ? 'Kiosk is verbonden met de lokale service'
-                : 'Verbinding met de lokale service wordt gecontroleerd'
+                ? (locale === 'zh-CN' ? '点单机已连接到本地服务' : 'Kiosk is verbonden met de lokale service')
+                : (locale === 'zh-CN' ? '正在检查与本地服务的连接' : 'Verbinding met de lokale service wordt gecontroleerd')
             }
           >
             <span aria-hidden="true" />
             {connectionState === 'checking'
-              ? 'Controleren'
+              ? copy.checking
               : connectionState === 'online'
-                ? 'Verbonden'
-                : 'Geen verbinding'}
+                ? copy.online
+                : copy.offline}
           </span>
+          <div className="language-switch" role="group" aria-label={locale === 'zh-CN' ? '选择语言' : 'Taal kiezen'}>
+            <button type="button" className={locale === 'zh-CN' ? 'active' : ''} onClick={() => setLocale('zh-CN')}>中文</button>
+            <button type="button" className={locale === 'nl-NL' ? 'active' : ''} onClick={() => setLocale('nl-NL')}>NL</button>
+          </div>
           {!providedApi && (
             <button
               className="text-button"
@@ -876,7 +932,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
               onClick={disconnectDevice}
               disabled={!canResetOrder}
             >
-              Kiosk wisselen
+              {copy.changeKiosk}
             </button>
           )}
         </div>
@@ -893,12 +949,12 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
             <strong>
               {connectionState === 'offline'
                 ? 'Bestellen is tijdelijk niet beschikbaar'
-                : 'Nieuwe bestellingen zijn gepauzeerd'}
+                : copy.paused}
             </strong>
             <p>
               {connectionState === 'offline'
                 ? 'De kiosk kan de lokale service niet bereiken. Controleer de verbinding of vraag een medewerker om hulp.'
-                : 'De winkel neemt nu geen nieuwe bestellingen aan. Vraag een medewerker om hulp.'}
+                : copy.pausedDetail}
             </p>
           </div>
           <button
@@ -907,16 +963,27 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
             disabled={statusBusy}
             onClick={() => void refreshDeviceStatus(true)}
           >
-            {statusBusy ? 'Controleren…' : 'Opnieuw controleren'}
+            {statusBusy ? `${copy.checking}…` : copy.retry}
           </button>
         </section>
       )}
 
       {step === 'browse' && (
-        <main className="ordering-layout">
+        <>
+          <SterlingGateKineticNavigation
+            isOpen={isCategoryMenuOpen}
+            items={kineticMenuItems}
+            language={locale}
+            onClose={() => setIsCategoryMenuOpen(false)}
+            onSelect={(categoryId) => {
+              setSelectedCategoryId(categoryId);
+              setIsCategoryMenuOpen(false);
+            }}
+          />
+          <main className="ordering-layout">
           <aside className="category-panel" aria-label="Categorieën">
-            <p className="category-kicker">Ons assortiment</p>
-            <h2>Menu</h2>
+            <p className="category-kicker">{copy.assortment}</p>
+            <h2>{copy.menu}</h2>
             <nav>
               {catalog.categories.map((category) => (
                 <button
@@ -935,10 +1002,19 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
           <section className="product-section" aria-labelledby="category-title">
             <div className="section-heading">
               <div>
-                <p className="eyebrow">Vers bereid door ons team</p>
-                <h1 id="category-title">{selectedCategory?.name ?? 'Menu'}</h1>
+                <p className="eyebrow">{copy.freshlyMade}</p>
+                <h1 id="category-title">{selectedCategory?.name ?? copy.menu}</h1>
               </div>
-              <p>{selectedCategory?.products.length ?? 0} keuzes</p>
+              <div className="category-heading-actions">
+                <button
+                  className="open-category-menu"
+                  type="button"
+                  onClick={() => setIsCategoryMenuOpen(true)}
+                >
+                  {copy.explore}
+                </button>
+                <p>{selectedCategory?.products.length ?? 0} {copy.choices}</p>
+              </div>
             </div>
             <div className="product-grid">
               {selectedCategory?.products.map((product) => {
@@ -969,7 +1045,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
                         aria-label={`${product.name} toevoegen`}
                       >
                         <span aria-hidden="true">+</span>
-                        <span>Toevoegen</span>
+                        <span>{copy.add}</span>
                       </button>
                     </div>
                   </article>
@@ -981,15 +1057,15 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
           <aside className="cart-panel" aria-labelledby="cart-title">
             <div className="cart-heading">
               <div>
-                <p>Winkelmand</p>
-                <h2 id="cart-title">Je bestelling</h2>
+                <p>{copy.cart}</p>
+                <h2 id="cart-title">{copy.order}</h2>
               </div>
               <span aria-label={`${cartQuantity} producten`}>{cartQuantity}</span>
             </div>
             {cart.length === 0 ? (
               <div className="empty-cart">
                 <span aria-hidden="true">＋</span>
-                <p>Kies een drankje om te beginnen.</p>
+                <p>{copy.emptyCart}</p>
               </div>
             ) : (
               <ul className="cart-lines">
@@ -1031,21 +1107,22 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
             )}
             <div className="cart-summary">
               <p>
-                <span>Geschat totaal</span>
+                <span>{copy.estimated}</span>
                 <strong>{formatMoney(estimatedTotal, activeCurrency, locale)}</strong>
               </p>
-              <small>Definitieve BTW en kortingen worden hierna berekend.</small>
+              <small>{copy.vat}</small>
               <button
                 className="primary-button"
                 type="button"
                 disabled={cart.length === 0 || busyAction !== null || !acceptingNewOrders}
                 onClick={() => void reviewOrder()}
               >
-                {busyAction === 'quote' ? 'Prijs controleren…' : 'Bestelling controleren'}
+                {busyAction === 'quote' ? `${copy.checking}…` : copy.review}
               </button>
             </div>
           </aside>
-        </main>
+          </main>
+        </>
       )}
 
       {step === 'review' && quote && (
@@ -1053,8 +1130,8 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
           <section className="checkout-card" aria-labelledby="review-title">
             <div className="section-heading">
               <div>
-                <p className="eyebrow">Controle</p>
-                <h1 id="review-title">Klopt je bestelling?</h1>
+                <p className="eyebrow">{locale === 'zh-CN' ? '订单确认' : 'Controle'}</p>
+                <h1 id="review-title">{copy.checkOrder}</h1>
               </div>
               <button
                 className="secondary-button"
@@ -1062,7 +1139,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
                 onClick={() => setStep('browse')}
                 disabled={busyAction !== null}
               >
-                Wijzigen
+                {copy.edit}
               </button>
             </div>
             <ul className="review-lines">
@@ -1084,31 +1161,31 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
             </ul>
             <div className="totals">
               <p>
-                <span>Subtotaal</span>
+                <span>{copy.subtotal}</span>
                 <span>{formatMoney(quote.subtotal_minor, quote.currency, quote.locale)}</span>
               </p>
               {quote.discount_minor > 0 && (
                 <p className="discount">
-                  <span>Korting</span>
+                  <span>{copy.discount}</span>
                   <span>− {formatMoney(quote.discount_minor, quote.currency, quote.locale)}</span>
                 </p>
               )}
               <p>
-                <span>BTW</span>
+                <span>{copy.tax}</span>
                 <span>{formatMoney(quote.tax_minor, quote.currency, quote.locale)}</span>
               </p>
               <p className="grand-total">
-                <span>Totaal</span>
+                <span>{copy.total}</span>
                 <strong>{formatMoney(quote.total_minor, quote.currency, quote.locale)}</strong>
               </p>
               <small>
                 {quote.prices_include_tax
-                  ? 'Prijzen zijn inclusief BTW.'
-                  : 'BTW is toegevoegd aan het totaal.'}
+                  ? copy.taxIncluded
+                  : copy.taxAdded}
               </small>
             </div>
             <fieldset className="payment-methods">
-              <legend>Hoe wil je betalen?</legend>
+              <legend>{copy.paymentHow}</legend>
               <label className={paymentMethod === 'CONTACTLESS' ? 'selected' : ''}>
                 <input
                   type="radio"
@@ -1118,8 +1195,8 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
                   onChange={() => setPaymentMethod('CONTACTLESS')}
                   disabled={busyAction !== null}
                 />
-                <span>Contactloos</span>
-                <small>Kaart, telefoon of wearable</small>
+                <span>{copy.contactless}</span>
+                <small>{copy.contactlessHint}</small>
               </label>
               <label className={paymentMethod === 'CARD' ? 'selected' : ''}>
                 <input
@@ -1130,8 +1207,8 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
                   onChange={() => setPaymentMethod('CARD')}
                   disabled={busyAction !== null}
                 />
-                <span>Betaalkaart</span>
-                <small>Steek de kaart in de terminal</small>
+                <span>{copy.card}</span>
+                <small>{copy.cardHint}</small>
               </label>
             </fieldset>
             <button
@@ -1141,8 +1218,8 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
               onClick={() => void startPayment()}
             >
               {busyAction
-                ? 'Betaling starten…'
-                : `Betalen · ${formatMoney(quote.total_minor, quote.currency, quote.locale)}`}
+                ? `${copy.pay}…`
+                : `${copy.pay} · ${formatMoney(quote.total_minor, quote.currency, quote.locale)}`}
             </button>
           </section>
         </main>
@@ -1161,10 +1238,10 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
                   ? '!'
                   : '↻'}
             </div>
-            <p className="eyebrow">Bestelling {order.display_number}</p>
+            <p className="eyebrow">{locale === 'zh-CN' ? '订单' : 'Bestelling'} {order.display_number}</p>
             <h1>{paymentStatusLabel(order.payment_status)}</h1>
             {busyAction === 'execute-payment' && (
-              <p>Volg de instructies op de betaalterminal. Sluit dit scherm niet.</p>
+              <p>{copy.processing}</p>
             )}
             {busyAction === null && order.payment_status === 'INITIATED' && (
               <p>De betaling is nog niet naar de terminal gestuurd. Je kunt veilig doorgaan.</p>
@@ -1223,7 +1300,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
                 disabled={busyAction !== null}
                 onClick={() => void refreshOrder()}
               >
-                Status vernieuwen
+                {copy.refresh}
               </button>
             </div>
           </section>
@@ -1241,22 +1318,22 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
             </div>
             <p className="eyebrow">
               {order.payment_status === 'REFUNDED'
-                ? 'Terugbetaling verwerkt'
-                : 'Betaling ontvangen'}
+                ? (locale === 'zh-CN' ? '退款已处理' : 'Terugbetaling verwerkt')
+                : copy.received}
             </p>
             <h1 id="success-title">
-              {order.status === 'CANCELLED' ? 'Bestelling geannuleerd' : 'Bedankt!'}
+              {order.status === 'CANCELLED' ? (locale === 'zh-CN' ? '订单已取消' : 'Bestelling geannuleerd') : copy.thankYou}
             </h1>
             <p>
               {order.status === 'CANCELLED'
                 ? 'Bekijk hieronder het betaal- en terugbetalingsbewijs.'
                 : order.status === 'CLOSED'
                   ? 'Je bestelling is afgerond.'
-                  : 'Je bestelling wordt door ons team bereid.'}
+                  : copy.preparing}
             </p>
             {order.status !== 'CANCELLED' && (
               <div className="pickup-number">
-                <span>Afhaalnummer</span>
+                <span>{copy.pickup}</span>
                 <strong>{order.display_number}</strong>
               </div>
             )}
@@ -1276,7 +1353,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
               disabled={busyAction !== null}
               onClick={() => void refreshOrder()}
             >
-              Status vernieuwen
+              {copy.refresh}
             </button>
           </section>
           <div className="receipt-column">
@@ -1298,11 +1375,12 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
                 <ReceiptView
                   key={`${receipt.receipt_type}-${receipt.receipt_number}`}
                   receipt={receipt}
+                  language={locale}
                 />
               ))
             )}
             <button className="primary-button" type="button" onClick={newOrder}>
-              Nieuwe bestelling
+              {locale === 'zh-CN' ? '开始新订单' : 'Nieuwe bestelling'}
             </button>
           </div>
         </main>
@@ -1312,6 +1390,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
         <ProductCustomizer
           product={customizing}
           locale={locale}
+          language={locale}
           onCancel={closeCustomizer}
           onAdd={(ids) => addToCart(customizing, ids)}
         />

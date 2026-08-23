@@ -13,8 +13,10 @@ import {
 import { formChecked, formNumber } from '../form';
 import { useAsyncResource } from '../hooks';
 import type { StorePolicy, StoreWithPolicy } from '../types';
+import { useAdminI18n } from '../i18n';
 
 export function StoresPage({ api, canWrite }: { api: ApiClient; canWrite: boolean }) {
+  const { t, choose } = useAdminI18n();
   const loader = useCallback(() => api.get<StoreWithPolicy[]>('/admin/organization/stores'), [api]);
   const resource = useAsyncResource(loader);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -53,7 +55,7 @@ export function StoresPage({ api, canWrite }: { api: ApiClient; canWrite: boolea
               ) ?? null,
           );
           setPending(false);
-          setSuccess('Store policy updated.');
+          setSuccess(choose('门店策略已更新。', 'Vestigingsbeleid is bijgewerkt.'));
         },
         (error: unknown) => {
           setPending(false);
@@ -65,17 +67,17 @@ export function StoresPage({ api, canWrite }: { api: ApiClient; canWrite: boolea
   return (
     <section>
       <PageHeader
-        title="Stores and operating policy"
-        description="View assigned stores and control whether kiosks may accept orders."
+        title={choose('门店与营业策略', 'Vestigingen en bedrijfsbeleid')}
+        description={choose('查看已分配门店，并控制点餐机是否可接收订单。', 'Bekijk toegewezen vestigingen en bepaal of kiosken bestellingen mogen aannemen.')}
       />
-      {resource.loading ? <LoadingState label="Loading stores…" /> : null}
+      {resource.loading ? <LoadingState label={choose('正在加载门店…', 'Vestigingen laden…')} /> : null}
       {resource.error ? <ErrorState error={resource.error} retry={resource.reload} /> : null}
       {resource.data?.length === 0 ? (
-        <EmptyState title="No stores" detail="No active store is assigned to this account." />
+        <EmptyState title={choose('暂无门店', 'Geen vestigingen')} detail={choose('当前账号未分配任何启用的门店。', 'Aan dit account is geen actieve vestiging toegewezen.')} />
       ) : null}
       {resource.data && resource.data.length > 0 ? (
         <div className="split-layout">
-          <aside className="selection-list" aria-label="Assigned stores">
+          <aside className="selection-list" aria-label={choose('已分配门店', 'Toegewezen vestigingen')}>
             {resource.data.map((entry) => (
               <button
                 type="button"
@@ -103,15 +105,15 @@ export function StoresPage({ api, canWrite }: { api: ApiClient; canWrite: boolea
               </header>
               <dl className="definition-grid">
                 <div>
-                  <dt>Store ID</dt>
+                  <dt>{choose('门店 ID', 'Vestiging-ID')}</dt>
                   <dd className="monospace">{selected.store.id}</dd>
                 </div>
                 <div>
-                  <dt>Time zone</dt>
+                  <dt>{choose('时区', 'Tijdzone')}</dt>
                   <dd>{selected.store.timezone}</dd>
                 </div>
                 <div>
-                  <dt>Policy version</dt>
+                  <dt>{choose('策略版本', 'Beleidsversie')}</dt>
                   <dd>{selected.policy.version}</dd>
                 </div>
               </dl>
@@ -128,9 +130,9 @@ export function StoresPage({ api, canWrite }: { api: ApiClient; canWrite: boolea
                     defaultChecked={selected.policy.accepting_orders}
                     disabled={!canWrite}
                   />{' '}
-                  Accepting orders
+                  {choose('接受订单', 'Bestellingen accepteren')}
                 </label>
-                <Field label="Maximum open tickets" htmlFor="max_open_tickets">
+                <Field label={choose('最大待制作单数', 'Maximum aantal open tickets')} htmlFor="max_open_tickets">
                   <input
                     id="max_open_tickets"
                     name="max_open_tickets"
@@ -142,7 +144,7 @@ export function StoresPage({ api, canWrite }: { api: ApiClient; canWrite: boolea
                     required
                   />
                 </Field>
-                <Field label="KDS heartbeat seconds" htmlFor="kds_heartbeat_seconds">
+                <Field label={choose('KDS 心跳间隔（秒）', 'KDS-heartbeat (seconden)')} htmlFor="kds_heartbeat_seconds">
                   <input
                     id="kds_heartbeat_seconds"
                     name="kds_heartbeat_seconds"
@@ -161,12 +163,12 @@ export function StoresPage({ api, canWrite }: { api: ApiClient; canWrite: boolea
                     defaultChecked={selected.policy.printer_fallback_enabled}
                     disabled={!canWrite}
                   />{' '}
-                  Printer fallback enabled
+                  {choose('启用打印机备用方案', 'Printerreserve inschakelen')}
                 </label>
                 {canWrite ? (
-                  <SubmitButton pending={pending}>Save policy</SubmitButton>
+                  <SubmitButton pending={pending}>{choose('保存策略', 'Beleid opslaan')}</SubmitButton>
                 ) : (
-                  <p className="muted">Read-only: organization:write permission is required.</p>
+                  <p className="muted">{choose('只读：需要 organization:write 权限。', 'Alleen lezen: de machtiging organization:write is vereist.')}</p>
                 )}
               </form>
             </article>

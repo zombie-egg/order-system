@@ -30,28 +30,21 @@ const AGE_WARNING_MS = 5 * 60_000;
 const AGE_CRITICAL_MS = 10 * 60_000;
 
 const STATUS_LABELS: Record<FulfillmentStatus, string> = {
-  NOT_RELEASED: 'Not released',
-  QUEUED: 'New',
-  ACKNOWLEDGED: 'Accepted',
-  PREPARING: 'Preparing',
-  READY: 'Ready',
-  COLLECTED: 'Collected',
-  ON_HOLD: 'On hold',
-  UNFULFILLABLE: 'Cannot fulfil',
-  CANCELLED: 'Cancelled',
+  NOT_RELEASED: '未发布', QUEUED: '新订单', ACKNOWLEDGED: '已接单', PREPARING: '制作中',
+  READY: '待取餐', COLLECTED: '已取餐', ON_HOLD: '已暂停', UNFULFILLABLE: '无法制作', CANCELLED: '已取消',
 };
 
 const FAILURE_REASONS: ReadonlyArray<{ value: FulfillmentFailureReason; label: string }> = [
-  { value: 'OUT_OF_STOCK', label: 'Ingredient or item out of stock' },
-  { value: 'STAFF_CAPACITY', label: 'Insufficient staff capacity' },
+  { value: 'OUT_OF_STOCK', label: '原料或商品缺货' },
+  { value: 'STAFF_CAPACITY', label: '人员不足，无法制作' },
   {
     value: 'MANUAL_WORKSTATION_EQUIPMENT_FAILURE',
-    label: 'Manual workstation or equipment failure',
+    label: '人工制作工位或设备故障',
   },
-  { value: 'ORDER_ERROR', label: 'Order information is incorrect' },
-  { value: 'ALLERGEN_OR_RECIPE_ISSUE', label: 'Allergen or recipe issue' },
-  { value: 'STORE_CLOSING', label: 'Store is closing' },
-  { value: 'OTHER', label: 'Other operational reason' },
+  { value: 'ORDER_ERROR', label: '订单信息有误' },
+  { value: 'ALLERGEN_OR_RECIPE_ISSUE', label: '过敏原或配方问题' },
+  { value: 'STORE_CLOSING', label: '门店即将打烊' },
+  { value: 'OTHER', label: '其他运营原因' },
 ];
 
 const ALLOWED_TRANSITIONS: Partial<Record<FulfillmentStatus, FulfillmentStatus[]>> = {
@@ -71,11 +64,7 @@ const PRIMARY_TRANSITION: Partial<Record<FulfillmentStatus, FulfillmentStatus>> 
 };
 
 const ACTION_LABELS: Partial<Record<FulfillmentStatus, string>> = {
-  ACKNOWLEDGED: 'Accept order',
-  PREPARING: 'Start preparing',
-  READY: 'Mark ready',
-  COLLECTED: 'Mark collected',
-  ON_HOLD: 'Put on hold',
+  ACKNOWLEDGED: '接受订单', PREPARING: '开始制作', READY: '标记完成', COLLECTED: '标记已取餐', ON_HOLD: '暂停订单',
 };
 
 type TicketAgeLevel = 'fresh' | 'warning' | 'critical';
@@ -116,19 +105,19 @@ function initialConnectionForm(session: StoredKitchenSession | null): Connection
 
 function formatError(error: unknown): string {
   if (!(error instanceof ApiError)) {
-    return error instanceof Error ? error.message : 'An unexpected error occurred.';
+    return error instanceof Error ? error.message : '发生未知错误。';
   }
 
-  const suffix = error.correlationId ? ` Reference: ${error.correlationId}.` : '';
+  const suffix = error.correlationId ? ` 参考编号：${error.correlationId}。` : '';
   switch (error.status) {
     case 401:
-      return `The staff session or endpoint credentials are invalid or expired.${suffix}`;
+      return `员工登录会话或工位凭据无效或已过期。${suffix}`;
     case 403:
-      return `This staff account is not allowed to operate the kitchen queue.${suffix}`;
+      return `该员工账号无权操作制作队列。${suffix}`;
     case 409:
-      return `This ticket changed on another display. The queue has been refreshed.${suffix}`;
+      return `此订单已在其他看板更新，队列已刷新。${suffix}`;
     case 422:
-      return `The transition was rejected because its data is invalid.${suffix}`;
+      return `状态更新因数据无效而被拒绝。${suffix}`;
     default:
       return `${error.message}${suffix}`;
   }
@@ -195,7 +184,7 @@ function ticketAgePresentation(
   const start = stageTimestamp ?? observedAt;
   const elapsed = Math.max(0, now - start);
   const roundedMinutes = Math.floor(elapsed / 60_000);
-  const shortLabel = roundedMinutes < 1 ? 'Just arrived' : `${roundedMinutes} min`;
+  const shortLabel = roundedMinutes < 1 ? '刚到' : `${roundedMinutes} 分钟`;
   const level: TicketAgeLevel =
     elapsed >= AGE_CRITICAL_MS ? 'critical' : elapsed >= AGE_WARNING_MS ? 'warning' : 'fresh';
 
@@ -203,38 +192,38 @@ function ticketAgePresentation(
     return {
       accessibleLabel:
         roundedMinutes < 1
-          ? 'Just arrived on this display'
-          : `On this display for ${roundedMinutes} minutes`,
+          ? '刚刚显示在此看板'
+          : `已显示在此看板 ${roundedMinutes} 分钟`,
       level,
       shortLabel,
-      title: 'Measured from when this display first received the ticket.',
+      title: '从此看板首次收到该订单时开始计算。',
     };
   }
 
   const stageLabel: Partial<Record<FulfillmentStatus, string>> = {
-    ACKNOWLEDGED: 'Accepted',
-    PREPARING: 'Preparing',
-    ON_HOLD: 'In current workflow',
-    READY: 'Ready',
+    ACKNOWLEDGED: '已接单',
+    PREPARING: '制作中',
+    ON_HOLD: '当前流程中',
+    READY: '待取餐',
   };
-  const label = stageLabel[ticket.status] ?? 'In current stage';
+  const label = stageLabel[ticket.status] ?? '当前阶段';
   return {
     accessibleLabel:
       roundedMinutes < 1
-        ? `${label} less than a minute ago`
-        : `${label} for ${roundedMinutes} minutes`,
+        ? `${label} 不到一分钟`
+        : `${label} 已 ${roundedMinutes} 分钟`,
     level,
     shortLabel,
-    title: 'Measured from the server-recorded time for the current preparation stage.',
+    title: '从服务器记录的当前制作阶段时间开始计算。',
   };
 }
 
 function transitionLabel(ticket: FulfillmentTicket, status: FulfillmentStatus): string {
   if (ticket.status === 'ON_HOLD' && status === 'PREPARING') {
-    return 'Resume preparing';
+    return '继续制作';
   }
   if (ticket.status === 'ON_HOLD' && status === 'ACKNOWLEDGED') {
-    return 'Return to accepted';
+    return '恢复为已接单';
   }
   return ACTION_LABELS[status] ?? STATUS_LABELS[status];
 }
@@ -261,7 +250,7 @@ function ConnectionScreen({
       const endpointId = form.endpointId.trim();
       const endpointKey = form.endpointKey.trim();
       if (!endpointId || !endpointKey) {
-        throw new Error('Endpoint ID and endpoint key are required.');
+        throw new Error('请填写工位 ID 和工位密钥。');
       }
 
       const token = await createAccessToken(apiBaseUrl, {
@@ -309,16 +298,15 @@ function ConnectionScreen({
             <span>SipPilot · 饮航</span>
           </div>
           <div>
-            <p className="eyebrow">Store edge · Manual preparation</p>
-            <h1 id="connection-title">Connect kitchen display</h1>
+            <p className="eyebrow">门店边缘服务 · 人工制作</p>
+          <h1 id="connection-title">连接制作看板</h1>
             <p className="supporting-text">
-              Sign in a kitchen operator and pair this Windows display with its provisioned
-              endpoint.
+              登录制作员工账号，并将此看板连接至已配置的制作工位。
             </p>
           </div>
           <div className="provisioning-note">
-            <strong>Before the shift</strong>
-            <span>Confirm the Edge API is running and this station has an active endpoint.</span>
+            <strong>开始营业前</strong>
+            <span>请确认 Edge API 正在运行，且此工位已启用。</span>
           </div>
         </aside>
 
@@ -331,7 +319,7 @@ function ConnectionScreen({
 
           <form className="connection-form" onSubmit={(event) => void submit(event)}>
             <label>
-              Edge API address
+              Edge API 地址
               <input
                 type="url"
                 required
@@ -344,7 +332,7 @@ function ConnectionScreen({
 
             <div className="form-grid">
               <label>
-                Endpoint ID
+              工位 ID
                 <input
                   required
                   autoComplete="off"
@@ -355,7 +343,7 @@ function ConnectionScreen({
                 />
               </label>
               <label>
-                Endpoint key
+              工位密钥
                 <input
                   type="password"
                   required
@@ -368,7 +356,7 @@ function ConnectionScreen({
 
             <div className="form-grid">
               <label>
-                Tenant code
+              租户代码
                 <input
                   required
                   autoCapitalize="none"
@@ -378,7 +366,7 @@ function ConnectionScreen({
                 />
               </label>
               <label>
-                Username
+              用户名
                 <input
                   required
                   autoCapitalize="none"
@@ -390,7 +378,7 @@ function ConnectionScreen({
             </div>
 
             <label>
-              Password
+              密码
               <input
                 type="password"
                 required
@@ -405,14 +393,12 @@ function ConnectionScreen({
               type="submit"
               disabled={submitting}
             >
-              {submitting ? 'Checking credentials…' : 'Connect display'}
+              {submitting ? '正在验证…' : '连接看板'}
             </button>
           </form>
 
           <p className="security-note">
-            Phase 4 stores the endpoint key and short-lived staff token only in this browser tab
-            session. Production Windows provisioning must inject secrets through the managed device
-            boundary; never compile a device key into the web bundle.
+            当前版本仅在本浏览器标签中保存工位密钥和短期员工令牌。生产环境应通过受管设备安全注入密钥。
           </p>
         </div>
       </section>
@@ -455,15 +441,15 @@ function TicketCard({
     >
       {busy ? (
         <span className="sr-only" role="status">
-          Updating order {ticket.display_number}
+          正在更新订单 {ticket.display_number}
         </span>
       ) : null}
       <header className="ticket-header">
         <div>
           <div className="ticket-flags">
-            {priority ? <span className="priority-badge">Priority {ticket.priority}</span> : null}
+            {priority ? <span className="priority-badge">优先级 {ticket.priority}</span> : null}
             {ticket.generation_number > 1 ? (
-              <span className="remake-badge">Remake {ticket.generation_number}</span>
+              <span className="remake-badge">重做第 {ticket.generation_number} 次</span>
             ) : null}
           </div>
           <p className="ticket-number" id={`ticket-${ticket.id}`}>
@@ -481,7 +467,7 @@ function TicketCard({
         </div>
       </header>
 
-      <ul className="ticket-items" aria-label={`Items for order ${ticket.display_number}`}>
+      <ul className="ticket-items" aria-label={`订单 ${ticket.display_number} 的商品`}>
         {ticket.items.map((item) => {
           const preparation = snapshotValues(item.preparation_snapshot);
           const allergens = snapshotValues(item.allergen_snapshot);
@@ -492,14 +478,14 @@ function TicketCard({
                 <strong>{item.name}</strong>
               </div>
               {preparation.length > 0 ? (
-                <ul className="item-notes" aria-label="Preparation instructions">
+                <ul className="item-notes" aria-label="制作要求">
                   {preparation.map((note) => (
                     <li key={note}>{note}</li>
                   ))}
                 </ul>
               ) : null}
               {allergens.length > 0 ? (
-                <p className="allergen-note">Allergen information: {allergens.join('; ')}</p>
+                <p className="allergen-note">过敏原信息：{allergens.join('；')}</p>
               ) : null}
             </li>
           );
@@ -520,7 +506,7 @@ function TicketCard({
             disabled={busy || offline}
             onClick={() => onTransition(ticket, primaryTransition)}
           >
-            {busy ? 'Updating…' : transitionLabel(ticket, primaryTransition)}
+            {busy ? '正在更新…' : transitionLabel(ticket, primaryTransition)}
           </button>
         ) : null}
         {secondaryTransitions.map((status) => (
@@ -541,7 +527,7 @@ function TicketCard({
             disabled={busy || offline}
             onClick={() => onTransition(ticket, 'UNFULFILLABLE')}
           >
-            Cannot fulfil
+            无法制作
           </button>
         ) : null}
       </footer>
@@ -614,11 +600,10 @@ function FailureDialog({
     <div className="dialog-backdrop">
       <section className="dialog" role="dialog" aria-modal="true" aria-labelledby="failure-title">
         <div className="dialog-heading">
-          <p className="dialog-kicker">Manual review required</p>
-          <h2 id="failure-title">Order #{state.ticket.display_number} cannot be fulfilled</h2>
+          <p className="dialog-kicker">需要人工审核</p>
+          <h2 id="failure-title">订单 #{state.ticket.display_number} 无法制作</h2>
           <p>
-            This immediately removes the ticket from the kitchen queue and opens a case for manual
-            review.
+            此操作会立即从制作队列移除该订单，并创建一条人工审核记录。
           </p>
         </div>
         {state.validationError ? (
@@ -628,11 +613,11 @@ function FailureDialog({
         ) : null}
         {offline ? (
           <div className="alert alert-warning" role="alert">
-            The display is offline. Reconnect before confirming this action.
+            看板当前离线，请恢复连接后再确认此操作。
           </div>
         ) : null}
         <label htmlFor="failure-reason">
-          Operational reason
+          运营原因
           <select
             id="failure-reason"
             ref={reasonRef}
@@ -646,7 +631,7 @@ function FailureDialog({
               })
             }
           >
-            <option value="">Select a reason</option>
+            <option value="">请选择原因</option>
             {FAILURE_REASONS.map((reason) => (
               <option value={reason.value} key={reason.value}>
                 {reason.label}
@@ -655,19 +640,19 @@ function FailureDialog({
           </select>
         </label>
         <label htmlFor="failure-detail">
-          Review detail
+          审核说明
           <textarea
             id="failure-detail"
             required
             maxLength={1000}
             rows={4}
-            placeholder="Describe what staff checked and why the paid order cannot be made. Do not enter payment-card data."
+            placeholder="说明员工已检查的内容，以及该已支付订单无法制作的原因。请勿填写银行卡信息。"
             value={state.detail}
             onChange={(event) =>
               onChange({ ...state, detail: event.target.value, validationError: null })
             }
           />
-          <span className="field-help">Required · {state.detail.length}/1000 characters</span>
+          <span className="field-help">必填 · {state.detail.length}/1000 个字符</span>
         </label>
         <div className="dialog-actions">
           <button
@@ -676,7 +661,7 @@ function FailureDialog({
             disabled={busy}
             onClick={onCancel}
           >
-            Cancel
+            取消
           </button>
           <button
             className="button button-danger"
@@ -684,7 +669,7 @@ function FailureDialog({
             disabled={busy || offline}
             onClick={onSubmit}
           >
-            {busy ? 'Submitting…' : 'Confirm cannot fulfil'}
+            {busy ? '正在提交…' : '确认无法制作'}
           </button>
         </div>
       </section>
@@ -870,7 +855,7 @@ function QueueScreen({
     if (!failureDialog.reason || !detail) {
       setFailureDialog({
         ...failureDialog,
-        validationError: 'Select an operational reason and enter review detail.',
+        validationError: '请选择运营原因并填写审核说明。',
       });
       return;
     }
@@ -885,9 +870,9 @@ function QueueScreen({
       statuses: FulfillmentStatus[];
       tickets: FulfillmentTicket[];
     }> = [
-      { title: 'New orders', statuses: ['QUEUED', 'ACKNOWLEDGED'], tickets: [] },
-      { title: 'In preparation', statuses: ['PREPARING', 'ON_HOLD'], tickets: [] },
-      { title: 'Ready for collection', statuses: ['READY'], tickets: [] },
+      { title: '新订单', statuses: ['QUEUED', 'ACKNOWLEDGED'], tickets: [] },
+      { title: '制作中', statuses: ['PREPARING', 'ON_HOLD'], tickets: [] },
+      { title: '待取餐', statuses: ['READY'], tickets: [] },
     ];
     for (const ticket of tickets) {
       groups.find((group) => group.statuses.includes(ticket.status))?.tickets.push(ticket);
@@ -907,7 +892,6 @@ function QueueScreen({
     () => tickets.filter((ticket) => ticket.priority > 0).length,
     [tickets],
   );
-
   return (
     <main className="queue-shell">
       <header className="app-header">
@@ -916,17 +900,17 @@ function QueueScreen({
             SD
           </span>
           <div>
-            <p className="eyebrow">Manual preparation station</p>
-            <h1>Kitchen Display</h1>
+            <p className="eyebrow">人工制作工位</p>
+            <h1>制作看板</h1>
           </div>
         </div>
         <div className="header-actions">
           <div className={`connection-status ${online ? 'is-online' : 'is-offline'}`}>
             <span className={`status-dot ${online ? 'online' : 'offline'}`} aria-hidden="true" />
             <span>
-              <strong aria-live="polite">{online ? 'Connected' : 'Offline'}</strong>
+              <strong aria-live="polite">{online ? '已连接' : '离线'}</strong>
               {lastHeartbeatAt ? (
-                <small>Heartbeat {lastHeartbeatAt.toLocaleTimeString()}</small>
+                <small>心跳 {lastHeartbeatAt.toLocaleTimeString()}</small>
               ) : null}
             </span>
           </div>
@@ -936,18 +920,17 @@ function QueueScreen({
             disabled={refreshing || !online}
             onClick={() => void refreshQueue(true)}
           >
-            {refreshing ? 'Refreshing…' : 'Refresh queue'}
+            {refreshing ? '正在刷新…' : '刷新队列'}
           </button>
           <button className="button button-quiet" type="button" onClick={() => onDisconnect()}>
-            Disconnect
+            断开连接
           </button>
         </div>
       </header>
 
       {!online ? (
         <div className="alert alert-warning" role="alert">
-          This display is offline. Ticket actions are disabled until the Edge API connection
-          returns.
+          看板当前离线。请恢复与 API 的连接后再操作订单。
         </div>
       ) : null}
       {globalError ? (
@@ -959,7 +942,7 @@ function QueueScreen({
             disabled={!online || refreshing}
             onClick={() => void refreshQueue(true)}
           >
-            Retry
+            重试
           </button>
         </div>
       ) : null}
@@ -968,39 +951,38 @@ function QueueScreen({
         <div className="summary-metrics" aria-live="polite" aria-atomic="true">
           <span className="summary-metric">
             <strong>{tickets.length}</strong>
-            <span>Active</span>
+            <span>处理中</span>
           </span>
           <span
             className={`summary-metric summary-priority${priorityTicketCount ? ' has-priority' : ''}`}
           >
             <strong>{priorityTicketCount}</strong>
-            <span>Priority</span>
+            <span>优先</span>
           </span>
         </div>
         <span className="last-updated">
           {lastUpdatedAt
-            ? `Updated ${lastUpdatedAt.toLocaleTimeString()}`
-            : 'Waiting for first update'}
+            ? `更新于 ${lastUpdatedAt.toLocaleTimeString()}`
+            : '等待首次更新'}
         </span>
       </div>
 
       {loading ? (
         <section className="empty-state" aria-busy="true">
-          <h2>Loading kitchen queue…</h2>
-          <p>Checking the paid-order queue for this preparation station.</p>
+          <h2>正在加载制作队列…</h2>
+          <p>正在检查该工位的已支付订单。</p>
         </section>
       ) : tickets.length === 0 && !online ? (
         <section className="empty-state empty-state-offline">
-          <h2>Queue unavailable offline</h2>
+          <h2>离线时无法查看队列</h2>
           <p>
-            Reconnect this Windows display to the Edge API. Orders will load automatically when the
-            connection returns.
+            请将此 Windows 看板重新连接至 Edge API。连接恢复后，订单会自动加载。
           </p>
         </section>
       ) : tickets.length === 0 ? (
         <section className="empty-state">
-          <h2>No active orders</h2>
-          <p>The display will refresh automatically when a paid order reaches this station.</p>
+          <h2>暂无待制作订单</h2>
+          <p>有已支付订单到达此工位时，页面会自动刷新。</p>
         </section>
       ) : (
         <div className="queue-grid">
@@ -1010,11 +992,12 @@ function QueueScreen({
               <section
                 className={`queue-column queue-column-${columnStatus.toLowerCase()}`}
                 aria-labelledby={`column-${columnStatus}`}
+                id={`queue-stage-${columnStatus.toLowerCase()}`}
                 key={group.title}
               >
                 <header className="column-header">
                   <h2 id={`column-${columnStatus}`}>{group.title}</h2>
-                  <span aria-label={`${group.tickets.length} tickets`}>{group.tickets.length}</span>
+                  <span aria-label={`${group.tickets.length} 个订单`}>{group.tickets.length}</span>
                 </header>
                 {group.tickets.length > 0 ? (
                   <div className="ticket-stack">
@@ -1032,7 +1015,7 @@ function QueueScreen({
                     ))}
                   </div>
                 ) : (
-                  <p className="column-empty">No tickets in this stage</p>
+                  <p className="column-empty">此阶段暂无订单</p>
                 )}
               </section>
             );

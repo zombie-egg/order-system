@@ -4,6 +4,7 @@ import { ErrorState, Field, PageHeader, SubmitButton } from '../components';
 import { formText } from '../form';
 import { formatDuration, formatMoneyMinor, localInputToIso, toLocalDateTimeInput } from '../format';
 import type { ReportsBundle, StoreWithPolicy } from '../types';
+import { useAdminI18n } from '../i18n';
 
 interface ReportQuery {
   storeId: string;
@@ -28,6 +29,7 @@ export function ReportsPage({
   assignedStoreIds: string[];
   canReadOrganization: boolean;
 }) {
+  const { t, choose } = useAdminI18n();
   const [query, setQuery] = useState(defaultQuery);
   const [reports, setReports] = useState<ReportsBundle | null>(null);
   const [pending, setPending] = useState(false);
@@ -47,7 +49,7 @@ export function ReportsPage({
     try {
       const start = localInputToIso(next.startAt);
       const end = localInputToIso(next.endAt);
-      if (start >= end) throw new Error('Report end must be later than report start.');
+      if (start >= end) throw new Error(choose('报表结束时间必须晚于开始时间。', 'Het einde van het rapport moet na de start liggen.'));
       params = new URLSearchParams({ store_id: next.storeId, start_at: start, end_at: end });
     } catch (reason) {
       setError(reason);
@@ -77,14 +79,14 @@ export function ReportsPage({
   return (
     <section>
       <PageHeader
-        title="Reports"
-        description="Sales, refund, fulfillment, and reconciliation summaries use a half-open time window."
+        title={t('reports')}
+        description={choose('销售、退款、履约和对账汇总使用左闭右开的时间范围。', 'Verkoop-, terugbetalings-, fulfilment- en afstemmingsoverzichten gebruiken een halfopen tijdvenster.')}
       />
       <form className="filter-bar" onSubmit={load}>
-        <Field label="Store" htmlFor="report_store">
+        <Field label={t('store')} htmlFor="report_store">
           <select id="report_store" name="store_id" required defaultValue={query.storeId}>
             <option value="" disabled>
-              Select a store
+              {t('selectStore')}
             </option>
             {stores.map(({ store }) => (
               <option key={store.id} value={store.id}>
@@ -93,12 +95,12 @@ export function ReportsPage({
             ))}
             {unnamedStoreIds.map((storeId) => (
               <option key={storeId} value={storeId}>
-                {canReadOrganization ? 'Assigned store' : 'Store'} {storeId.slice(0, 8)}
+                {canReadOrganization ? t('assignedStore') : t('store')} {storeId.slice(0, 8)}
               </option>
             ))}
           </select>
         </Field>
-        <Field label="Start" htmlFor="start_at">
+        <Field label={choose('开始时间', 'Start')} htmlFor="start_at">
           <input
             id="start_at"
             name="start_at"
@@ -107,7 +109,7 @@ export function ReportsPage({
             required
           />
         </Field>
-        <Field label="End" htmlFor="end_at">
+        <Field label={choose('结束时间', 'Einde')} htmlFor="end_at">
           <input
             id="end_at"
             name="end_at"
@@ -116,28 +118,28 @@ export function ReportsPage({
             required
           />
         </Field>
-        <SubmitButton pending={pending}>Run reports</SubmitButton>
+        <SubmitButton pending={pending}>{choose('生成报表', 'Rapporten uitvoeren')}</SubmitButton>
       </form>
       {error ? <ErrorState error={error} /> : null}
       {reports ? (
         <div className="card-grid reports-grid">
           <article className="card">
-            <h2>Sales</h2>
+            <h2>{choose('销售', 'Verkoop')}</h2>
             <dl className="metric-grid">
               <div>
-                <dt>Orders</dt>
+                <dt>{t('orders')}</dt>
                 <dd>{reports.sales.order_count}</dd>
               </div>
               <div>
-                <dt>Gross sales</dt>
+                <dt>{choose('销售总额', 'Bruto-omzet')}</dt>
                 <dd>{formatMoneyMinor(reports.sales.gross_sales_minor, reports.sales.currency)}</dd>
               </div>
               <div>
-                <dt>Discount</dt>
+                <dt>{choose('优惠', 'Korting')}</dt>
                 <dd>{formatMoneyMinor(reports.sales.discount_minor, reports.sales.currency)}</dd>
               </div>
               <div>
-                <dt>Net collected</dt>
+                <dt>{choose('实收金额', 'Netto ontvangen')}</dt>
                 <dd>
                   {formatMoneyMinor(reports.sales.net_collected_minor, reports.sales.currency)}
                 </dd>
@@ -145,20 +147,20 @@ export function ReportsPage({
             </dl>
           </article>
           <article className="card">
-            <h2>Refunds</h2>
+            <h2>{t('refunds')}</h2>
             <dl className="metric-grid">
               <div>
-                <dt>Requests</dt>
+                <dt>{choose('申请数', 'Verzoeken')}</dt>
                 <dd>{reports.refunds.refund_count}</dd>
               </div>
               <div>
-                <dt>Requested</dt>
+                <dt>{choose('申请金额', 'Aangevraagd')}</dt>
                 <dd>
                   {formatMoneyMinor(reports.refunds.requested_minor, reports.refunds.currency)}
                 </dd>
               </div>
               <div>
-                <dt>Succeeded</dt>
+                <dt>{choose('成功金额', 'Geslaagd')}</dt>
                 <dd>
                   {formatMoneyMinor(reports.refunds.succeeded_minor, reports.refunds.currency)}
                 </dd>
@@ -167,52 +169,52 @@ export function ReportsPage({
             <KeyValueList values={reports.refunds.status_counts} />
           </article>
           <article className="card">
-            <h2>Fulfillment</h2>
+            <h2>{choose('履约', 'Fulfilment')}</h2>
             <dl className="metric-grid">
               <div>
-                <dt>Tickets</dt>
+                <dt>{choose('制作单', 'Tickets')}</dt>
                 <dd>{reports.fulfillment.ticket_count}</dd>
               </div>
               <div>
-                <dt>Avg. acknowledge</dt>
+                <dt>{choose('平均接单时间', 'Gem. acceptatietijd')}</dt>
                 <dd>{formatDuration(reports.fulfillment.average_seconds_to_acknowledge)}</dd>
               </div>
               <div>
-                <dt>Avg. ready</dt>
+                <dt>{choose('平均完成时间', 'Gem. klaartijd')}</dt>
                 <dd>{formatDuration(reports.fulfillment.average_seconds_to_ready)}</dd>
               </div>
               <div>
-                <dt>Avg. collection</dt>
+                <dt>{choose('平均取餐时间', 'Gem. afhaaltijd')}</dt>
                 <dd>{formatDuration(reports.fulfillment.average_seconds_ready_to_collect)}</dd>
               </div>
             </dl>
             <KeyValueList values={reports.fulfillment.status_counts} />
           </article>
           <article className="card">
-            <h2>Reconciliation</h2>
+            <h2>{choose('对账', 'Afstemming')}</h2>
             <dl className="metric-grid">
               <div>
-                <dt>Runs</dt>
+                <dt>{choose('执行次数', 'Uitvoeringen')}</dt>
                 <dd>{reports.reconciliation.run_count}</dd>
               </div>
               <div>
-                <dt>Failed</dt>
+                <dt>{choose('失败次数', 'Mislukt')}</dt>
                 <dd>{reports.reconciliation.failed_run_count}</dd>
               </div>
               <div>
-                <dt>Open issues</dt>
+                <dt>{choose('待处理问题', 'Open problemen')}</dt>
                 <dd>{reports.reconciliation.open_issue_count}</dd>
               </div>
               <div>
-                <dt>Critical issues</dt>
+                <dt>{choose('严重问题', 'Kritieke problemen')}</dt>
                 <dd>{reports.reconciliation.critical_open_issue_count}</dd>
               </div>
             </dl>
-            <p>Latest status: {reports.reconciliation.latest_run_status ?? '—'}</p>
+            <p>{choose('最新状态：', 'Laatste status: ')}{reports.reconciliation.latest_run_status ?? '—'}</p>
           </article>
         </div>
       ) : (
-        <p className="muted standalone-message">Select a store and time window to run reports.</p>
+        <p className="muted standalone-message">{choose('请选择门店和时间范围后生成报表。', 'Kies een vestiging en tijdvenster om rapporten uit te voeren.')}</p>
       )}
     </section>
   );

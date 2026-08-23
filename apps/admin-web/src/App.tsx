@@ -11,6 +11,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { ReviewsPage } from './pages/ReviewsPage';
 import { StoresPage } from './pages/StoresPage';
 import { UsersPage } from './pages/UsersPage';
+import { AdminI18nProvider, LanguageSwitch, useAdminI18n } from './i18n';
 import type { AccessTokenResponse, Principal, StoredSession, StoreWithPolicy } from './types';
 
 const SESSION_KEY = 'smart-drink-admin-session';
@@ -26,23 +27,23 @@ type PageId =
   | 'audit';
 interface NavItem {
   id: PageId;
-  label: string;
+  label: 'dashboard' | 'stores' | 'users' | 'catalog' | 'orders' | 'refunds' | 'reviews' | 'reports' | 'audit';
   permissions: string[];
 }
 const NAVIGATION: NavItem[] = [
-  { id: 'dashboard', label: 'Overview', permissions: ['report:read'] },
-  { id: 'stores', label: 'Stores', permissions: ['organization:read'] },
-  { id: 'users', label: 'Staff', permissions: ['identity:read'] },
+  { id: 'dashboard', label: 'dashboard', permissions: ['report:read'] },
+  { id: 'stores', label: 'stores', permissions: ['organization:read'] },
+  { id: 'users', label: 'users', permissions: ['identity:read'] },
   {
     id: 'catalog',
-    label: 'Catalog & pricing',
+    label: 'catalog',
     permissions: ['catalog:read', 'catalog:write', 'catalog:tenant_write'],
   },
-  { id: 'orders', label: 'Orders', permissions: ['order:read'] },
-  { id: 'refunds', label: 'Refunds', permissions: ['payment:read'] },
-  { id: 'reviews', label: 'Manual review', permissions: ['review:read'] },
-  { id: 'reports', label: 'Reports', permissions: ['report:read'] },
-  { id: 'audit', label: 'Audit', permissions: ['audit:read'] },
+  { id: 'orders', label: 'orders', permissions: ['order:read'] },
+  { id: 'refunds', label: 'refunds', permissions: ['payment:read'] },
+  { id: 'reviews', label: 'reviews', permissions: ['review:read'] },
+  { id: 'reports', label: 'reports', permissions: ['report:read'] },
+  { id: 'audit', label: 'audit', permissions: ['audit:read'] },
 ];
 
 function canOpen(item: NavItem, permissions: Iterable<string>): boolean {
@@ -84,7 +85,8 @@ function expiresSoon(expiresAt: string): boolean {
   return Date.parse(expiresAt) <= Date.now() + 15_000;
 }
 
-export function App() {
+function AdminApp() {
+  const { t, choose } = useAdminI18n();
   const initialSession = useMemo(readStoredSession, []);
   const [session, setSession] = useState<StoredSession | null>(initialSession);
   const [principal, setPrincipal] = useState<Principal | null>(null);
@@ -107,7 +109,7 @@ export function App() {
         apiBaseUrl: session?.apiBaseUrl ?? configuredDefaultApiUrl,
         getAccessToken: () => session?.accessToken ?? null,
         onUnauthorized: () =>
-          clearSession('Your session expired or is no longer valid. Please sign in again.'),
+          clearSession(choose('登录已过期或无效，请重新登录。', 'De sessie is verlopen of ongeldig. Log opnieuw in.')),
       }),
     [clearSession, session],
   );
@@ -148,7 +150,7 @@ export function App() {
         if (active) activateIdentity(identity);
       },
       () => {
-        if (active) clearSession('The saved session could not be restored.');
+        if (active) clearSession(choose('无法恢复已保存的登录会话。', 'De opgeslagen sessie kan niet worden hersteld.'));
       },
     );
     return () => {
@@ -159,11 +161,11 @@ export function App() {
     if (!session) return;
     const expiryTime = Date.parse(session.expiresAt);
     if (!Number.isFinite(expiryTime) || expiresSoon(session.expiresAt)) {
-      clearSession('Your session expired. Please sign in again.');
+      clearSession(choose('登录已过期，请重新登录。', 'De sessie is verlopen. Log opnieuw in.'));
       return;
     }
     const timeout = window.setTimeout(
-      () => clearSession('Your session expired. Please sign in again.'),
+      () => clearSession(choose('登录已过期，请重新登录。', 'De sessie is verlopen. Log opnieuw in.')),
       Math.min(expiryTime - Date.now(), 2_147_483_647),
     );
     return () => window.clearTimeout(timeout);
@@ -185,7 +187,7 @@ export function App() {
       },
     });
     if (expiresSoon(token.expires_at)) {
-      throw new Error('The API returned an already expired access token.');
+        throw new Error(choose('API 返回的访问令牌已过期。', 'De API gaf een verlopen toegangstoken terug.'));
     }
     const next = {
       apiBaseUrl: values.apiBaseUrl,
@@ -212,7 +214,7 @@ export function App() {
   if (authLoading || !principal)
     return (
       <main className="centered-page">
-        <LoadingState label="Restoring staff session…" />
+        <LoadingState label={choose('正在恢复员工登录会话…', 'Medewerkerssessie herstellen…')} />
       </main>
     );
   const permissions = new Set(principal.permissions);
@@ -223,15 +225,16 @@ export function App() {
   return (
     <div className="app-shell">
       <a href="#main-content" className="skip-link">
-        Skip to main content
+        {t('skip')}
       </a>
       <aside className="sidebar">
         <header>
           <p className="eyebrow">SipPilot · 饮航</p>
-          <strong>Admin console</strong>
-          <span>Store operations platform</span>
+          <strong>{t('admin')}</strong>
+          <span>{t('operations')}</span>
+          <LanguageSwitch />
         </header>
-        <nav aria-label="Primary navigation">
+        <nav aria-label={choose('主导航', 'Hoofdnavigatie')}>
           {availableNavigation.map((item) => (
             <button
               key={item.id}
@@ -240,18 +243,18 @@ export function App() {
               aria-current={activePage === item.id ? 'page' : undefined}
               onClick={() => setPage(item.id)}
             >
-              {item.label}
+              {t(item.label)}
             </button>
           ))}
         </nav>
         <footer>
-          <span>Tenant</span>
+          <span>{choose('租户', 'Tenant')}</span>
           <code>{principal.tenant_id.slice(0, 12)}…</code>
           <span>
-            {principal.store_ids.length} assigned store{principal.store_ids.length === 1 ? '' : 's'}
+            {choose(`已分配 ${principal.store_ids.length} 家门店`, `${principal.store_ids.length} toegewezen vestiging(en)`)}
           </span>
           <button type="button" className="button button-secondary" onClick={() => clearSession()}>
-            Sign out
+            {t('signOut')}
           </button>
         </footer>
       </aside>
@@ -306,10 +309,18 @@ export function App() {
         {activePage === 'audit' ? <AuditPage api={api} /> : null}
         {availableNavigation.length === 0 ? (
           <Notice kind="warning">
-            This account has no Admin console permissions. Ask an owner to assign a store role.
+            {choose('此账号没有管理后台权限。请联系所有者分配门店角色。', 'Dit account heeft geen rechten voor de beheeromgeving. Vraag een eigenaar om een vestigingsrol toe te wijzen.')}
           </Notice>
         ) : null}
       </main>
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <AdminI18nProvider>
+      <AdminApp />
+    </AdminI18nProvider>
   );
 }

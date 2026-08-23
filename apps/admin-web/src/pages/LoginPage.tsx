@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { errorMessage, normalizeApiBaseUrl } from '../api';
 import { Field, SubmitButton } from '../components';
+import { LanguageSwitch, useAdminI18n } from '../i18n';
 
 export interface LoginValues {
   apiBaseUrl: string;
@@ -16,6 +17,7 @@ export function LoginPage({
   defaultApiUrl: string;
   onLogin: (values: LoginValues) => Promise<void>;
 }) {
+  const { t, choose } = useAdminI18n();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -44,9 +46,9 @@ export function LoginPage({
     <main className="login-layout">
       <section className="login-panel" aria-labelledby="login-title">
         <header>
-          <p className="eyebrow">SipPilot · 饮航 operations</p>
-          <h1 id="login-title">Staff sign in</h1>
-          <p>Use an assigned tenant account. Access is restricted by backend permissions.</p>
+          <div className="login-heading-row"><p className="eyebrow">SipPilot · 饮航 · {t('admin')}</p><LanguageSwitch /></div>
+          <h1 id="login-title">{t('signIn')}</h1>
+          <p>{choose('请使用已分配的租户账号登录。访问权限由后端角色控制。', 'Log in met een toegewezen tenantaccount. Toegang wordt bepaald door backendrollen.')}</p>
         </header>
         {error ? (
           <div className="notice notice-error" role="alert">
@@ -55,9 +57,9 @@ export function LoginPage({
         ) : null}
         <form onSubmit={submit} className="form-stack">
           <Field
-            label="API URL"
+            label={t('api')}
             htmlFor="apiBaseUrl"
-            hint="Override this for staging or a remote edge server."
+            hint={choose('可在此修改测试环境或远程边缘服务器地址。', 'Pas hier het adres van de testomgeving of externe edge-server aan.')}
           >
             <input
               id="apiBaseUrl"
@@ -67,13 +69,13 @@ export function LoginPage({
               required
             />
           </Field>
-          <Field label="Tenant code" htmlFor="tenantCode">
+          <Field label={t('tenantCode')} htmlFor="tenantCode">
             <input id="tenantCode" name="tenantCode" autoComplete="organization" required />
           </Field>
-          <Field label="Username" htmlFor="username">
+          <Field label={t('username')} htmlFor="username">
             <input id="username" name="username" autoComplete="username" required />
           </Field>
-          <Field label="Password" htmlFor="password">
+          <Field label={t('password')} htmlFor="password">
             <input
               id="password"
               name="password"
@@ -82,7 +84,7 @@ export function LoginPage({
               required
             />
           </Field>
-          <SubmitButton pending={pending}>Sign in</SubmitButton>
+          <SubmitButton pending={pending}>{t('signIn')}</SubmitButton>
         </form>
       </section>
     </main>

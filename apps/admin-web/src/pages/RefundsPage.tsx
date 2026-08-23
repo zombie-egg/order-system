@@ -11,6 +11,7 @@ import {
 import { formatDateTime, formatMoneyMinor, shortId } from '../format';
 import { useAsyncResource } from '../hooks';
 import type { Refund } from '../types';
+import { useAdminI18n } from '../i18n';
 
 export function RefundsPage({
   api,
@@ -21,6 +22,7 @@ export function RefundsPage({
   canResolve: boolean;
   canReconcile: boolean;
 }) {
+  const { t, choose } = useAdminI18n();
   const loader = useCallback(() => api.get<Refund[]>('/admin/payments/refunds?limit=200'), [api]);
   const resource = useAsyncResource(loader);
   const [mutationError, setMutationError] = useState<unknown>(null);
@@ -37,7 +39,7 @@ export function RefundsPage({
           (current) => current?.map((entry) => (entry.id === updated.id ? updated : entry)) ?? null,
         );
         setPendingId(null);
-        setSuccess(`Refund ${shortId(updated.id)} updated to ${updated.status}.`);
+        setSuccess(choose(`退款 ${shortId(updated.id)} 已更新为 ${updated.status}。`, `Terugbetaling ${shortId(updated.id)} is bijgewerkt naar ${updated.status}.`));
       },
       (error: unknown) => {
         setPendingId(null);
@@ -49,26 +51,21 @@ export function RefundsPage({
   return (
     <section>
       <PageHeader
-        title="Refunds"
-        description="Monitor refund requests and explicitly execute or reconcile provider actions."
+        title={t('refunds')}
+        description={choose('查看退款申请，并执行或对账支付渠道操作。', 'Bekijk terugbetalingsverzoeken en voer betaalprovideracties uit of stem ze af.')}
       />
       <MutationMessage error={mutationError} success={success} />
-      {resource.loading ? <LoadingState label="Loading refunds…" /> : null}
+      {resource.loading ? <LoadingState label={choose('正在加载退款…', 'Terugbetalingen laden…')} /> : null}
       {resource.error ? <ErrorState error={resource.error} retry={resource.reload} /> : null}
       {resource.data?.length === 0 ? (
-        <EmptyState title="No refunds" detail="No refund request has been created." />
+        <EmptyState title={choose('暂无退款申请', 'Geen terugbetalingen')} detail={choose('当前没有已创建的退款申请。', 'Er zijn geen terugbetalingsverzoeken aangemaakt.')} />
       ) : null}
       {resource.data?.length ? (
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Refund</th>
-                <th>Order</th>
-                <th>Amount</th>
-                <th>Status</th>
-                <th>Completed</th>
-                <th>Actions</th>
+                <th>{t('refunds')}</th><th>{t('order')}</th><th>{t('amount')}</th><th>{t('status')}</th><th>{choose('完成时间', 'Voltooid')}</th><th>{t('actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -93,7 +90,7 @@ export function RefundsPage({
                           disabled={pendingId === refund.id}
                           onClick={() => mutate(refund, 'execute')}
                         >
-                          Execute
+                          {choose('执行', 'Uitvoeren')}
                         </button>
                       ) : null}
                       {canReconcile && refund.status === 'UNKNOWN' ? (
@@ -103,7 +100,7 @@ export function RefundsPage({
                           disabled={pendingId === refund.id}
                           onClick={() => mutate(refund, 'reconcile')}
                         >
-                          Reconcile
+                          {choose('对账', 'Afstemmen')}
                         </button>
                       ) : null}
                     </div>

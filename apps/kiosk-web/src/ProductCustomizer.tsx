@@ -5,6 +5,7 @@ import type { CatalogOptionGroup, CatalogProduct } from './types';
 interface ProductCustomizerProps {
   product: CatalogProduct;
   locale: string;
+  language: 'zh-CN' | 'nl-NL';
   onCancel: () => void;
   onAdd: (optionValueIds: string[]) => void;
 }
@@ -13,27 +14,38 @@ function initialSelections(product: CatalogProduct): Record<string, string[]> {
   return Object.fromEntries(product.option_groups.map((group) => [group.id, []]));
 }
 
-function groupError(group: CatalogOptionGroup, selections: string[]): string | null {
+function groupError(
+  group: CatalogOptionGroup,
+  selections: string[],
+  language: 'zh-CN' | 'nl-NL',
+): string | null {
   if (selections.length < group.minimum_selections) {
+    if (language === 'zh-CN') {
+      return group.minimum_selections === 1
+        ? `请选择 ${group.name}。`
+        : `请至少选择 ${group.minimum_selections} 项 ${group.name}。`;
+    }
     return group.minimum_selections === 1
       ? `Kies één optie voor ${group.name}.`
       : `Kies minimaal ${group.minimum_selections} opties voor ${group.name}.`;
   }
   if (selections.length > group.maximum_selections) {
-    return `Kies maximaal ${group.maximum_selections} opties voor ${group.name}.`;
+    return language === 'zh-CN'
+      ? `${group.name} 最多可选择 ${group.maximum_selections} 项。`
+      : `Kies maximaal ${group.maximum_selections} opties voor ${group.name}.`;
   }
   return null;
 }
 
 export function ProductCustomizer(props: ProductCustomizerProps) {
-  const { product, locale, onAdd, onCancel } = props;
+  const { product, locale, language, onAdd, onCancel } = props;
   const [selections, setSelections] = useState(() => initialSelections(product));
   const [showErrors, setShowErrors] = useState(false);
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const allergens = allergenNames(product.allergen_data);
   const errors = product.option_groups
-    .map((group) => groupError(group, selections[group.id] ?? []))
+    .map((group) => groupError(group, selections[group.id] ?? [], language))
     .filter((error): error is string => error !== null);
   const selectedIds = Object.values(selections).flat();
   const selectedDelta = useMemo(
@@ -116,7 +128,7 @@ export function ProductCustomizer(props: ProductCustomizerProps) {
       >
         <header className="dialog-header">
           <div>
-            <p className="eyebrow">Maak je keuze</p>
+            <p className="eyebrow">{language === 'zh-CN' ? '定制饮品' : 'Maak je keuze'}</p>
             <h2 id="customizer-title">{product.name}</h2>
           </div>
           <button
@@ -124,7 +136,7 @@ export function ProductCustomizer(props: ProductCustomizerProps) {
             className="icon-button"
             type="button"
             onClick={onCancel}
-            aria-label="Sluiten"
+            aria-label={language === 'zh-CN' ? '关闭' : 'Sluiten'}
           >
             ×
           </button>
@@ -133,14 +145,14 @@ export function ProductCustomizer(props: ProductCustomizerProps) {
         {product.description && <p className="product-description">{product.description}</p>}
         {allergens.length > 0 && (
           <p className="allergen-note">
-            <strong>Allergenen:</strong> {allergens.join(', ')}
+            <strong>{language === 'zh-CN' ? '过敏原：' : 'Allergenen:'}</strong> {allergens.join(', ')}
           </p>
         )}
 
         <div className="option-groups">
           {product.option_groups.map((group) => {
             const selected = selections[group.id] ?? [];
-            const error = showErrors ? groupError(group, selected) : null;
+            const error = showErrors ? groupError(group, selected, language) : null;
             return (
               <fieldset
                 className="option-group"
@@ -150,7 +162,9 @@ export function ProductCustomizer(props: ProductCustomizerProps) {
                 <legend>
                   {group.name}
                   <span>
-                    {group.minimum_selections > 0 ? 'Verplicht' : 'Optioneel'} · max.{' '}
+                    {group.minimum_selections > 0
+                      ? language === 'zh-CN' ? '必选' : 'Verplicht'
+                      : language === 'zh-CN' ? '可选' : 'Optioneel'} · {language === 'zh-CN' ? '最多' : 'max.'}{' '}
                     {group.maximum_selections}
                   </span>
                 </legend>
@@ -171,7 +185,7 @@ export function ProductCustomizer(props: ProductCustomizerProps) {
                         <span>{value.name}</span>
                         <small>
                           {value.price_delta_minor === 0
-                            ? 'Inbegrepen'
+                            ? language === 'zh-CN' ? '已包含' : 'Inbegrepen'
                             : `+ ${formatMoney(value.price_delta_minor, product.currency, locale)}`}
                         </small>
                       </label>
@@ -190,10 +204,10 @@ export function ProductCustomizer(props: ProductCustomizerProps) {
 
         <footer className="dialog-actions">
           <button className="secondary-button" type="button" onClick={onCancel}>
-            Annuleren
+            {language === 'zh-CN' ? '取消' : 'Annuleren'}
           </button>
           <button className="primary-button" type="button" onClick={addProduct}>
-            Toevoegen · {formatMoney(product.price_minor + selectedDelta, product.currency, locale)}
+            {language === 'zh-CN' ? '加入' : 'Toevoegen'} · {formatMoney(product.price_minor + selectedDelta, product.currency, locale)}
           </button>
         </footer>
       </section>

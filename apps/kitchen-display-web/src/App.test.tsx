@@ -114,27 +114,27 @@ describe('Kitchen Display', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(<App />);
-    expect(screen.getByRole('heading', { name: 'Connect kitchen display' })).toBeInTheDocument();
-    expect(screen.getByText(/never compile a device key/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '连接制作看板' })).toBeInTheDocument();
+    expect(screen.getByText(/当前版本仅在本浏览器标签中保存工位密钥/i)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Endpoint ID'), {
+    fireEvent.change(screen.getByLabelText('工位 ID'), {
       target: { value: session.endpointId },
     });
-    fireEvent.change(screen.getByLabelText('Endpoint key'), {
+    fireEvent.change(screen.getByLabelText('工位密钥'), {
       target: { value: session.endpointKey },
     });
-    fireEvent.change(screen.getByLabelText('Tenant code'), {
+    fireEvent.change(screen.getByLabelText('租户代码'), {
       target: { value: session.tenantCode },
     });
-    fireEvent.change(screen.getByLabelText('Username'), {
+    fireEvent.change(screen.getByLabelText('用户名'), {
       target: { value: session.username },
     });
-    fireEvent.change(screen.getByLabelText('Password'), {
+    fireEvent.change(screen.getByLabelText('密码'), {
       target: { value: 'a-valid-password' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Connect display' }));
+    fireEvent.click(screen.getByRole('button', { name: '连接看板' }));
 
-    expect(await screen.findByRole('heading', { name: 'Kitchen Display' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '制作看板' })).toBeInTheDocument();
     expect(await screen.findByText('#A-101')).toBeInTheDocument();
     expect(screen.getByText('2×')).toBeInTheDocument();
     expect(screen.getByText('Iced matcha latte')).toBeInTheDocument();
@@ -169,19 +169,19 @@ describe('Kitchen Display', () => {
 
     render(<App />);
     expect(await screen.findByText('#A-101')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Cannot fulfil' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm cannot fulfil' }));
+    fireEvent.click(screen.getByRole('button', { name: '无法制作' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认无法制作' }));
     expect(
-      screen.getByText('Select an operational reason and enter review detail.'),
+      screen.getByText('请选择运营原因并填写审核说明。'),
     ).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Operational reason'), {
+    fireEvent.change(screen.getByLabelText('运营原因'), {
       target: { value: 'OUT_OF_STOCK' },
     });
-    fireEvent.change(screen.getByRole('textbox', { name: /Review detail/ }), {
+    fireEvent.change(screen.getByRole('textbox', { name: /审核说明/ }), {
       target: { value: 'Matcha ingredient unavailable after stock check.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm cannot fulfil' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认无法制作' }));
 
     await waitFor(() => {
       expect(transitionBody).toEqual({
@@ -191,7 +191,7 @@ describe('Kitchen Display', () => {
         failure_detail: 'Matcha ingredient unavailable after stock check.',
       });
     });
-    expect(await screen.findByRole('heading', { name: 'No active orders' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '暂无待制作订单' })).toBeInTheDocument();
   });
 
   it('clears an invalid session and returns the operator to sign-in on HTTP 401', async () => {
@@ -217,9 +217,9 @@ describe('Kitchen Display', () => {
     render(<App />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Connect kitchen display' }),
+      await screen.findByRole('heading', { name: '连接制作看板' }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent(/invalid or expired/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/无效或已过期/i);
     expect(sessionStorage.length).toBe(0);
   });
 
@@ -247,8 +247,8 @@ describe('Kitchen Display', () => {
     const { container } = render(<App />);
 
     expect(await screen.findByText('#A-102')).toBeInTheDocument();
-    expect(screen.getByText('Priority 20')).toBeInTheDocument();
-    expect(screen.getByText('12 min')).toBeInTheDocument();
+    expect(screen.getByText('优先级 20')).toBeInTheDocument();
+    expect(screen.getByText('12 分钟')).toBeInTheDocument();
     const cards = Array.from(container.querySelectorAll('.ticket'));
     expect(cards[0]).toHaveTextContent('#A-102');
     expect(cards[0]).toHaveClass('ticket-priority', 'age-critical');
@@ -259,11 +259,11 @@ describe('Kitchen Display', () => {
     vi.stubGlobal('fetch', queueFetch([ticket]));
 
     render(<App />);
-    const cannotFulfil = await screen.findByRole('button', { name: 'Cannot fulfil' });
+    const cannotFulfil = await screen.findByRole('button', { name: '无法制作' });
     cannotFulfil.focus();
     fireEvent.click(cannotFulfil);
 
-    const reason = screen.getByLabelText('Operational reason');
+    const reason = screen.getByLabelText('运营原因');
     expect(reason).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -280,9 +280,9 @@ describe('Kitchen Display', () => {
     Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: false });
     fireEvent(window, new Event('offline'));
 
-    expect(screen.getByRole('alert')).toHaveTextContent(/actions are disabled/i);
-    expect(screen.getByRole('button', { name: 'Accept order' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Refresh queue' })).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/恢复与 API 的连接后再操作订单/i);
+    expect(screen.getByRole('button', { name: '接受订单' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '刷新队列' })).toBeDisabled();
   });
 
   it('shows a recoverable offline state instead of an endless first-load spinner', async () => {
@@ -294,9 +294,9 @@ describe('Kitchen Display', () => {
     render(<App />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Queue unavailable offline' }),
+      await screen.findByRole('heading', { name: '离线时无法查看队列' }),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/Loading kitchen queue/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/正在加载制作队列/i)).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

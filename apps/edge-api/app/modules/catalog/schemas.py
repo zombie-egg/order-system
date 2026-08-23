@@ -207,6 +207,14 @@ class ResourceCreatedResponse(BaseModel):
     id: UUID
 
 
+class ProductImageUploadRequest(StrictRequestModel):
+    image_data: str = Field(min_length=32, max_length=7_000_000)
+
+
+class ProductImageUploadResponse(BaseModel):
+    image_url: HttpUrl
+
+
 class CatalogOptionValueResponse(BaseModel):
     id: UUID
     code: str

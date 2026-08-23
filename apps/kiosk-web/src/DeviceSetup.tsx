@@ -28,15 +28,15 @@ export function DeviceSetup(props: DeviceSetupProps) {
       saveSessionKioskConfig(config);
       props.onConfigured(config);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'De apparaatgegevens zijn ongeldig.');
+      setError(reason instanceof Error ? reason.message : '设备信息无效。');
     }
   }
 
   return (
     <main className="setup-page">
       <section className="setup-card" aria-labelledby="setup-title">
-        <p className="eyebrow">SipPilot · 饮航 · Device provisioning</p>
-        <h1 id="setup-title">Kiosk koppelen</h1>
+        <p className="eyebrow">SipPilot · 饮航</p>
+        <h1 id="setup-title">连接点单机</h1>
         <p className="setup-intro">
           Voer de eenmalig uitgegeven apparaatgegevens in. De sleutel blijft alleen in deze
           browsertab en wordt niet in permanente browseropslag bewaard.

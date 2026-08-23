@@ -3,6 +3,7 @@ import type { KioskReceipt } from './types';
 
 interface ReceiptViewProps {
   receipt: KioskReceipt;
+  language: 'zh-CN' | 'nl-NL';
 }
 
 function objectValue(value: unknown): Record<string, unknown> {
@@ -19,7 +20,7 @@ function stringValue(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-export function ReceiptView({ receipt }: ReceiptViewProps) {
+export function ReceiptView({ receipt, language }: ReceiptViewProps) {
   const document = receipt.document;
   const legalEntity = objectValue(document.legal_entity);
   const store = objectValue(document.store);
@@ -32,9 +33,11 @@ export function ReceiptView({ receipt }: ReceiptViewProps) {
     <section className="receipt" aria-labelledby="receipt-title">
       <div className="receipt-heading">
         <div>
-          <p className="eyebrow">Digitaal bewijs</p>
+          <p className="eyebrow">{language === 'zh-CN' ? '电子凭证' : 'Digitaal bewijs'}</p>
           <h2 id="receipt-title">
-            {receipt.receipt_type === 'SALE' ? 'Betaalbewijs' : 'Terugbetalingsbewijs'}
+            {receipt.receipt_type === 'SALE'
+              ? language === 'zh-CN' ? '支付凭证' : 'Betaalbewijs'
+              : language === 'zh-CN' ? '退款凭证' : 'Terugbetalingsbewijs'}
           </h2>
         </div>
         <span>{receipt.receipt_number}</span>
@@ -47,7 +50,7 @@ export function ReceiptView({ receipt }: ReceiptViewProps) {
         </p>
       )}
       {(stringValue(order.order_number) ?? stringValue(document.order_number)) && (
-        <p>Bestelling {stringValue(order.order_number) ?? stringValue(document.order_number)}</p>
+        <p>{language === 'zh-CN' ? '订单' : 'Bestelling'} {stringValue(order.order_number) ?? stringValue(document.order_number)}</p>
       )}
 
       {items.length > 0 && (
@@ -55,7 +58,7 @@ export function ReceiptView({ receipt }: ReceiptViewProps) {
           {items.map((item, index) => (
             <li key={`${String(item.line_number)}-${index}`}>
               <span>
-                {numberValue(item.quantity) ?? 1}× {stringValue(item.name) ?? 'Product'}
+                {numberValue(item.quantity) ?? 1}× {stringValue(item.name) ?? (language === 'zh-CN' ? '商品' : 'Product')}
               </span>
               <strong>
                 {formatMoney(
@@ -71,12 +74,12 @@ export function ReceiptView({ receipt }: ReceiptViewProps) {
 
       {total !== null && (
         <p className="receipt-total">
-          <span>{receipt.receipt_type === 'SALE' ? 'Totaal' : 'Terugbetaald'}</span>
+          <span>{receipt.receipt_type === 'SALE' ? (language === 'zh-CN' ? '合计' : 'Totaal') : (language === 'zh-CN' ? '已退款' : 'Terugbetaald')}</span>
           <strong>{formatMoney(total, receipt.currency, receipt.locale)}</strong>
         </p>
       )}
       <p className="receipt-date">
-        Aangemaakt{' '}
+        {language === 'zh-CN' ? '生成时间 ' : 'Aangemaakt '}
         {new Intl.DateTimeFormat(receipt.locale, {
           dateStyle: 'medium',
           timeStyle: 'short',

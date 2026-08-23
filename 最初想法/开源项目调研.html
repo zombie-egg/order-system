@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Btea5 收银机开源项目调研 · 林子轩</title>
+<style>
+  :root {
+    --bg: #faf7f2;
+    --bg-card: #ffffff;
+    --primary: #2d5f4e;
+    --primary-light: #4a8b75;
+    --accent: #d97757;
+    --text: #1a1a1a;
+    --text-soft: #4a4a4a;
+    --text-mute: #8a8a8a;
+    --border: #e8e3d8;
+    --shadow: 0 2px 12px rgba(45,95,78,0.06);
+    --radius: 14px;
+    --tag-good: #d4edda;
+    --tag-good-text: #155724;
+    --tag-mid: #fff3cd;
+    --tag-mid-text: #856404;
+    --tag-bad: #f8d7da;
+    --tag-bad-text: #721c24;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 24px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .hero {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+    color: white;
+    border-radius: var(--radius);
+    padding: 32px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow);
+  }
+  .hero h1 { font-size: 28px; margin-bottom: 8px; }
+  .hero .sub { opacity: 0.9; font-size: 14px; margin-bottom: 16px; }
+  .tags { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tag {
+    background: rgba(255,255,255,0.15);
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+  }
+  h2 {
+    font-size: 20px;
+    color: var(--primary);
+    margin: 32px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+  }
+  .req-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .req {
+    background: var(--bg-card);
+    padding: 16px;
+    border-radius: 10px;
+    border-left: 4px solid var(--accent);
+    font-size: 14px;
+  }
+  .req strong { display: block; color: var(--primary); margin-bottom: 4px; }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .card {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    transition: transform 0.2s;
+  }
+  .card:hover { transform: translateY(-2px); }
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+  .card h3 { font-size: 17px; color: var(--primary); margin-bottom: 4px; }
+  .card .github {
+    font-size: 11px;
+    color: var(--text-mute);
+    font-family: ui-monospace, monospace;
+  }
+  .card .github a {
+    color: var(--primary-light);
+    text-decoration: none;
+    border-bottom: 1px dashed var(--primary-light);
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .card .github a:hover {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .github-link {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--primary-light);
+    text-decoration: none;
+    border: 1px solid var(--primary-light);
+    border-radius: 6px;
+    padding: 2px 10px;
+    transition: all 0.2s;
+  }
+  .github-link:hover {
+    background: var(--primary);
+    color: white;
+  }
+  td a.td-link {
+    color: var(--primary);
+    text-decoration: none;
+  }
+  td a.td-link:hover {
+    text-decoration: underline;
+    color: var(--accent);
+  }
+  .card .desc { font-size: 13px; color: var(--text-soft); margin-bottom: 12px; }
+  .features { font-size: 12px; color: var(--text-soft); margin-bottom: 10px; }
+  .features li { padding: 2px 0; list-style: none; }
+  .features li::before { content: "✓ "; color: var(--primary-light); font-weight: bold; margin-right: 4px; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .badge {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .badge.good { background: var(--tag-good); color: var(--tag-good-text); }
+  .badge.mid { background: var(--tag-mid); color: var(--tag-mid-text); }
+  .badge.bad { background: var(--tag-bad); color: var(--tag-bad-text); }
+  .badge.info { background: #d1ecf1; color: #0c5460; }
+  .badge.gray { background: #e9ecef; color: #495057; }
+  .reco {
+    background: linear-gradient(135deg, #fff9f0 0%, #ffe8d6 100%);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 16px;
+    border-left: 6px solid var(--accent);
+  }
+  .reco h3 { color: var(--accent); margin-bottom: 12px; font-size: 18px; }
+  .reco ol { margin-left: 20px; }
+  .reco li { padding: 4px 0; font-size: 14px; }
+  .reco strong { color: var(--primary); }
+  .alert {
+    background: linear-gradient(135deg, #fff5f5 0%, #ffe0e0 100%);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+    border-left: 6px solid #d63031;
+  }
+  .alert h3 { color: #d63031; margin-bottom: 8px; font-size: 18px; }
+  .alert ul { margin-left: 20px; font-size: 14px; }
+  .alert li { padding: 3px 0; }
+  .next-steps {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    padding: 24px;
+    border: 2px dashed var(--primary-light);
+  }
+  .next-steps h3 { color: var(--primary); margin-bottom: 12px; }
+  .step {
+    display: flex;
+    gap: 14px;
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--border);
+  }
+  .step:last-child { border: none; }
+  .step-num {
+    flex-shrink: 0;
+    width: 28px; height: 28px;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: bold;
+  }
+  .step-content { flex: 1; font-size: 14px; }
+  .step-content strong { color: var(--primary); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+    font-size: 13px;
+  }
+  th { background: var(--primary); color: white; padding: 12px; text-align: left; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  tr:hover { background: #f5f3ed; }
+  .footer {
+    text-align: center;
+    padding: 24px;
+    color: var(--text-mute);
+    font-size: 12px;
+    border-top: 1px solid var(--border);
+    margin-top: 24px;
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>🍵 Btea5 收银机 · 开源项目调研报告</h1>
+  <div class="sub">荷兰 Btea5 奶茶店自助点餐收银机软件选型 · 林子轩 调研于 2026-08-12</div>
+  <div class="tags">
+    <span class="tag">🇳🇱 荷兰</span>
+    <span class="tag">🍵 奶茶店</span>
+    <span class="tag">💻 Windows 触屏</span>
+    <span class="tag">💳 欧洲卡支付</span>
+    <span class="tag">🖨️ 小票打印</span>
+    <span class="tag">👨‍🍳 后厨通知</span>
+  </div>
+</div>
+
+<h2>📋 需求拆解（来自聊天记录）</h2>
+<div class="req-grid">
+  <div class="req"><strong>触屏点餐</strong>商品分类 → 选规格 → 加购物车</div>
+  <div class="req"><strong>订单生成</strong>带编号，方便后厨叫号</div>
+  <div class="req"><strong>后厨通知</strong>店员拿着小票开始制作</div>
+  <div class="req"><strong>小票打印</strong>热敏打印机，58/80mm</div>
+  <div class="req"><strong>欧洲支付</strong>信用卡 + iDEAL（非微信）</div>
+  <div class="req"><strong>Windows 系统</strong>机器已是 Windows</div>
+  <div class="req"><strong>后厨编号</strong>告诉服务员"第几号在第几"</div>
+  <div class="req"><strong>参考对标</strong>麦当劳/KFC 自助点餐机</div>
+</div>
+
+<h2>🏆 最匹配的 5 个开源项目</h2>
+
+<div class="cards">
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h3>① Open-Kiosk-App ⭐首推</h3>
+        <div class="github">📎 <a href="https://github.com/qqq-tech/Open-Kiosk-App" target="_blank" rel="noopener">github.com/qqq-tech/Open-Kiosk-App</a></div>
+      </div>
+    </div>
+    <div class="desc">专门给零售/咖啡店/快餐厅设计的开源 Kiosk，一键打包成 Windows 应用。最贴近 Btea5 需求。</div>
+    <ul class="features">
+      <li>React + Vite + Tailwind 现代界面</li>
+      <li>Firebase 实时数据库（云端+本地）</li>
+      <li>热敏打印机集成（ESP32 UART）</li>
+      <li>多语言 + 多币种（欧元EUR直接支持）</li>
+      <li>语音搜索 + 离线运行</li>
+      <li>销售报表 + CSV 导出</li>
+    </ul>
+    <div class="badges">
+      <span class="badge good">Windows 原生</span>
+      <span class="badge good">离线可用</span>
+      <span class="badge good">现代UI</span>
+      <span class="badge mid">需二次开发支付</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h3>② TanStack POS</h3>
+        <div class="github">📎 <a href="https://github.com/kadekdodikwirawan/tan-pos" target="_blank" rel="noopener">github.com/kadekdodikwirawan/tan-pos</a></div>
+      </div>
+    </div>
+    <div class="desc">现代感最强的开源 POS 平台，自带 KDS 厨房显示。最适合"专业感"。</div>
+    <ul class="features">
+      <li>React 19 + TanStack Start + tRPC</li>
+      <li>三个界面：Manager/Serve/Kitchen</li>
+      <li>实时同步订单，毫秒级推送</li>
+      <li>Docker 一键部署</li>
+      <li>桌面/平板/TV 全兼容</li>
+    </ul>
+    <div class="badges">
+      <span class="badge good">KDS 完整</span>
+      <span class="badge good">Docker 部署</span>
+      <span class="badge good">现代感最强</span>
+      <span class="badge bad">英文文档</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h3>③ URY（完整生态）</h3>
+        <div class="github">📎 <a href="https://github.com/SoftServedWeb-com/ury" target="_blank" rel="noopener">github.com/SoftServedWeb-com/ury</a></div>
+      </div>
+    </div>
+    <div class="desc">基于 ERPNext 的完整开源餐厅管理系统，已在 10+ 门店稳定运行 10 个月。POS + KDS + 库存 + 报表一站式。</div>
+    <ul class="features">
+      <li>POS 收银 + MOSAIC KDS</li>
+      <li>P&L 报表 + 库存管理</li>
+      <li>多厨房 + 打印机路由</li>
+      <li>支持堂食/外卖/外送</li>
+      <li>桌台管理 + 预订</li>
+    </ul>
+    <div class="badges">
+      <span class="badge good">企业级</span>
+      <span class="badge good">POS+KDS全</span>
+      <span class="badge mid">部署复杂</span>
+      <span class="badge bad">需ERPNext</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h3>④ simOrder（极简）</h3>
+        <div class="github">📎 <a href="https://github.com/simOrderS/simOrder" target="_blank" rel="noopener">github.com/simOrderS/simOrder</a></div>
+      </div>
+    </div>
+    <div class="desc">最轻量级，Django + Apache + 热敏打印机。适合"最小可用"的方案。</div>
+    <ul class="features">
+      <li>树莓派即可跑（也可装 PC）</li>
+      <li>ESC/POS 打印机直连</li>
+      <li>多用户权限管理</li>
+      <li>销售报表</li>
+    </ul>
+    <div class="badges">
+      <span class="badge good">极轻量</span>
+      <span class="badge good">小白友好</span>
+      <span class="badge bad">界面朴素</span>
+      <span class="badge bad">无KDS</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h3>⑤ Floreant POS（老牌经典）</h3>
+        <div class="github">📎 <a href="https://github.com/cnqvnet/floreantpos" target="_blank" rel="noopener">github.com/cnqvnet/floreantpos</a> · <a href="https://floreantpos.org" target="_blank" rel="noopener">官网</a></div>
+      </div>
+    </div>
+    <div class="desc">Java 桌面 POS 经典项目，分支 Chromis POS / uniCenta oPOS。商业级稳定。</div>
+    <ul class="features">
+      <li>Java 跨平台（Windows 完美）</li>
+      <li>30 万+ 零售商使用</li>
+      <li>支持 KDS 接入</li>
+      <li>开源 + 商业生态成熟</li>
+    </ul>
+    <div class="badges">
+      <span class="badge good">稳定</span>
+      <span class="badge good">成熟生态</span>
+      <span class="badge mid">Java 老技术</span>
+      <span class="badge bad">UI 不够现代</span>
+    </div>
+  </div>
+
+</div>
+
+<h2>⚡ 横向对比表</h2>
+<table>
+  <thead>
+    <tr>
+      <th>项目</th>
+      <th>触屏点餐</th>
+      <th>后厨KDS</th>
+      <th>小票打印</th>
+      <th>支付集成</th>
+      <th>Windows</th>
+      <th>上手难度</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><a href="https://github.com/qqq-tech/Open-Kiosk-App" target="_blank" rel="noopener" class="td-link"><strong>Open-Kiosk-App</strong></a></td><td>✅ 原生</td><td>❌ 需自加</td><td>✅ ESP32</td><td>⚠️ 需开发</td><td>✅ 完美</td><td>⭐⭐</td></tr>
+    <tr><td><a href="https://github.com/kadekdodikwirawan/tan-pos" target="_blank" rel="noopener" class="td-link"><strong>TanStack POS</strong></a></td><td>✅ 三界面</td><td>✅ 内置</td><td>⚠️ 需配</td><td>⚠️ 需开发</td><td>✅ Docker</td><td>⭐⭐⭐</td></tr>
+    <tr><td><a href="https://github.com/SoftServedWeb-com/ury" target="_blank" rel="noopener" class="td-link"><strong>URY</strong></a></td><td>✅ POS</td><td>✅ Mosaic</td><td>✅ KOT</td><td>⚠️ 模块</td><td>✅ 服务端</td><td>⭐⭐⭐⭐</td></tr>
+    <tr><td><a href="https://github.com/simOrderS/simOrder" target="_blank" rel="noopener" class="td-link"><strong>simOrder</strong></a></td><td>✅ 触屏</td><td>❌</td><td>✅ ESC/POS</td><td>⚠️ 需开发</td><td>✅</td><td>⭐</td></tr>
+    <tr><td><a href="https://github.com/cnqvnet/floreantpos" target="_blank" rel="noopener" class="td-link"><strong>Floreant POS</strong></a></td><td>✅</td><td>✅ 外接</td><td>✅</td><td>⚠️ 插件</td><td>✅ Java</td><td>⭐⭐⭐</td></tr>
+  </tbody>
+</table>
+
+<h2>🔗 全部 GitHub 直达链接</h2>
+<div class="next-steps">
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-content">
+      <strong>Open-Kiosk-App</strong>（⭐首推 · 奶茶店 Kiosk）<br>
+      <a class="github-link" href="https://github.com/qqq-tech/Open-Kiosk-App" target="_blank" rel="noopener">打开仓库 ↗</a>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-content">
+      <strong>TanStack POS</strong>（现代感最强 · 含 KDS）<br>
+      <a class="github-link" href="https://github.com/kadekdodikwirawan/tan-pos" target="_blank" rel="noopener">打开仓库 ↗</a>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-content">
+      <strong>URY</strong>（完整餐厅管理系统 · POS+KDS+报表）<br>
+      <a class="github-link" href="https://github.com/SoftServedWeb-com/ury" target="_blank" rel="noopener">打开仓库 ↗</a>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-content">
+      <strong>simOrder</strong>（极简 Django POS）<br>
+      <a class="github-link" href="https://github.com/simOrderS/simOrder" target="_blank" rel="noopener">打开仓库 ↗</a>
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-content">
+      <strong>Floreant POS</strong>（老牌 Java POS）<br>
+      <a class="github-link" href="https://github.com/cnqvnet/floreantpos" target="_blank" rel="noopener">打开仓库 ↗</a> <a class="github-link" href="https://floreantpos.org" target="_blank" rel="noopener">官网 ↗</a>
+    </div>
+  </div>
+</div>
+
+<h2>💰 欧洲支付方案（最大难点）</h2>
+
+<div class="alert">
+  <h3>⚠️ 父亲真正的卡点：欧洲支付 ≠ 微信支付</h3>
+  <ul>
+    <li>荷兰人 70% 用 <strong>iDEAL</strong>（银行直连转账，手续费低）</li>
+    <li>信用卡 Visa/MC/Amex 占比其次</li>
+    <li>年轻人爱用 <strong>Apple Pay / Bancontact</strong></li>
+    <li><strong>没有现成的"扫一扫"二维码</strong>（那是亚洲玩法）</li>
+  </ul>
+</div>
+
+<div class="reco">
+  <h3>✅ 强烈推荐：Mollie（荷兰本土支付）</h3>
+  <ol>
+    <li><strong>为什么选 Mollie</strong>：荷兰本土公司，<strong>10 分钟接入</strong>，专门给中小企业做的，开发者体验最好 —— <a href="https://www.mollie.com" target="_blank" rel="noopener" style="color:var(--accent);">mollie.com ↗</a> / <a href="https://docs.mollie.com" target="_blank" rel="noopener" style="color:var(--accent);">开发者文档 ↗</a></li>
+    <li><strong>支持方式</strong>：iDEAL、Visa、MasterCard、Amex、Bancontact、Klarna、Apple Pay、PayPal 一站搞定</li>
+    <li><strong>技术栈</strong>：官方 Python/Node/PHP/Java/.NET SDK，你用 Python Flask 已经能对接</li>
+    <li><strong>费用</strong>：iDEAL €0.25/笔，信用卡 1.8% + €0.25（消费卡），无月费</li>
+    <li><strong>注册</strong>：需荷兰银行账户 + KVK（商会号），如果用你父亲的身份开，资料齐全即可</li>
+    <li><strong>备选</strong>：<a href="https://stripe.com" target="_blank" rel="noopener" style="color:var(--accent);">Stripe ↗</a>（国际通用，欧洲全境，但 iDEAL 需单独申请）</li>
+  </ol>
+</div>
+
+<h2>🎯 我给的 3 个方案</h2>
+
+<div class="reco">
+  <h3>方案 A：最快上线（推荐 ★★★）</h3>
+  <p><strong>Open-Kiosk-App + Mollie + KDS 后加</strong></p>
+  <ol>
+    <li>把 Open-Kiosk-App 部署到现有 Windows 触屏上</li>
+    <li>菜单图直接放上去，Firebase 配置商品库</li>
+    <li>买一台 ESC/POS 58mm 热敏打印机（USB 口，€20-50）</li>
+    <li>对接 Mollie 卡支付（iDEAL + Visa/MC）</li>
+    <li>后厨加一台旧电脑/平板做 KDS（显示订单号）</li>
+    <li>预计 2-4 周可以上线</li>
+  </ol>
+</div>
+
+<div class="reco">
+  <h3>方案 B：完整专业（适合长期经营）</h3>
+  <p><strong>TanStack POS 或 URY + Mollie + 完整硬件</strong></p>
+  <ol>
+    <li>Docker 部署完整 POS 系统</li>
+    <li>前端触屏点餐 + 后厨 KDS + 后台报表一站</li>
+    <li>Mollie 收款 + 财务报表自动生成</li>
+    <li>需要你会一点 Docker / 编程基础</li>
+    <li>预计 4-8 周</li>
+  </ol>
+</div>
+
+<div class="reco">
+  <h3>方案 C：自己写（如果你想练手）</h3>
+  <p><strong>Flask/Vue + 上述任一开源 + Mollie SDK</strong></p>
+  <ol>
+    <li>你已经有 Flask 图片生成的底子</li>
+    <li>前端用 Vue3 + Element Plus 写一个触屏点餐界面</li>
+    <li>后端 Flask 接 MySQL + Mollie API</li>
+    <li>复用 Open-Kiosk 的热敏打印模块</li>
+    <li>工作量最大（8-12 周），但定制性最强</li>
+  </ol>
+</div>
+
+<h2>🚨 目前最大的问题（也是最容易踩坑的）</h2>
+
+<div class="alert">
+  <h3>最大难点：支付 + 硬件 + 软件的"三方对接"</h3>
+  <ol style="margin-left: 20px; padding-top: 8px;">
+    <li><strong>① Mollie/Stripe 账号</strong>：<br>需要荷兰本地银行账号 + KVK 商号注册；以你爸 Btea5 的名义开。开通 iDEAL 最快，信用卡需要 PCI-DSS 合规材料。</li>
+    <li><strong>② PIN Pad（刷卡机）硬件</strong>：<br>触屏只是"下单机"，收卡需要外接 Verifone / Ingenico 等 PCI 认证的 PIN Pad（荷兰常用 Worldline / CCV）。这块要单独买硬件，不是软件能解决的。</li>
+    <li><strong>③ 热敏打印机驱动</strong>：<br>Windows 装 ESC/POS 通用驱动就行（推荐 Epson TM-T20 或 Star TSP143），USB 接电脑。</li>
+    <li><strong>④ KDS 后厨屏幕</strong>：<br>需要另一台旧电脑/平板 + 一个简单的 KDS 页面，<strong>这个是聊天记录里你爸明确要的"通知服务员"</strong>功能。</li>
+    <li><strong>⑤ 父子沟通 + 实际菜单</strong>：<br>Btea5 的菜单图（我看屏幕上有大概 18 款饮品）、价格、规格（杯型/糖度/加料），需要你爸拍下来给你，AI 才能自动生成菜单数据。</li>
+  </ol>
+</div>
+
+<h2>✅ 下一步建议</h2>
+
+<div class="next-steps">
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-content">
+      <strong>确定预算和时间</strong>：你爸能接受 €100 内的软件成本？还是愿意花钱买商业版？想 2 周上线还是慢慢做？
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-content">
+      <strong>先注册 Mollie 账号</strong>：你爸提供荷兰 KVK + 银行账户，开通测试模式（不需要真钱就能测）
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-content">
+      <strong>拍 Btea5 菜单 + 价格 + 规格表</strong>：拍 1-2 张菜单照片给我，我用 AI 自动生成菜单 JSON
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-content">
+      <strong>确定硬件清单</strong>：你已经有了触屏主机；我再帮你列一份"打印机 + PIN Pad + 后厨 KDS 屏幕"清单让你爸去荷兰本地买
+    </div>
+  </div>
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-content">
+      <strong>选定方案后开干</strong>：如果选 A（推荐），我可以直接帮你把 Open-Kiosk-App 部署到 Windows 上跑起来
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  🍵 Btea5 收银机开源调研 · 林子轩 · 2026-08-12 · 如有疑问继续问我～
+</div>
+
+</body>
+</html>

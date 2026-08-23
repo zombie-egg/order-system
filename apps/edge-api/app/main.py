@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -14,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
+from starlette.staticfiles import StaticFiles
 
 from app.api.router import api_router
 from app.core.api_models import ProblemDetails
@@ -156,6 +158,11 @@ def create_app(
         if resolved_settings.mock_payment_enabled
         else DisabledPaymentAdapter()
     )
+    # Product images are uploaded by authorised administrators and exposed as
+    # immutable files. API responses themselves retain no-cache protection.
+    media_dir = os.path.abspath(resolved_settings.media_storage_dir)
+    os.makedirs(media_dir, exist_ok=True)
+    application.mount("/media", StaticFiles(directory=media_dir), name="media")
     application.add_middleware(
         CORSMiddleware,
         allow_origins=resolved_settings.cors_origins,

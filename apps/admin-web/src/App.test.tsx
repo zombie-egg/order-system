@@ -71,16 +71,16 @@ describe('Admin console', () => {
 
   it('authenticates and renders permission-scoped navigation', async () => {
     render(<App />);
-    expect(screen.getByRole('heading', { name: 'Staff sign in' })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Tenant code'), { target: { value: 'demo' } });
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } });
-    fireEvent.change(screen.getByLabelText('Password'), {
+    expect(screen.getByRole('heading', { name: '员工登录' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('租户代码'), { target: { value: 'demo' } });
+    fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByLabelText('密码'), {
       target: { value: 'correct horse battery staple' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    expect(await screen.findByText('Admin console')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Overview' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Refunds' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '员工登录' }));
+    expect(await screen.findByText('管理后台')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '经营概览' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '退款' })).not.toBeInTheDocument();
     expect(sessionStorage.getItem('smart-drink-admin-session')).not.toContain('correct horse');
   });
 
@@ -90,12 +90,12 @@ describe('Admin console', () => {
       vi.fn(async () => json({ detail: 'Sign-in failed.' }, 401)),
     );
     render(<App />);
-    fireEvent.change(screen.getByLabelText('Tenant code'), { target: { value: 'demo' } });
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } });
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong password' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    fireEvent.change(screen.getByLabelText('租户代码'), { target: { value: 'demo' } });
+    fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'wrong password' } });
+    fireEvent.click(screen.getByRole('button', { name: '员工登录' }));
     expect(await screen.findByText('Sign-in failed.')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Staff sign in' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '员工登录' })).toBeInTheDocument();
   });
 
   it('does not persist a token when principal loading fails', async () => {
@@ -115,10 +115,10 @@ describe('Admin console', () => {
       }),
     );
     render(<App />);
-    fireEvent.change(screen.getByLabelText('Tenant code'), { target: { value: 'demo' } });
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } });
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'valid password' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    fireEvent.change(screen.getByLabelText('租户代码'), { target: { value: 'demo' } });
+    fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'admin' } });
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'valid password' } });
+    fireEvent.click(screen.getByRole('button', { name: '员工登录' }));
     expect(await screen.findByText('The signed-in account is unavailable.')).toBeInTheDocument();
     expect(sessionStorage.getItem('smart-drink-admin-session')).toBeNull();
   });
@@ -134,7 +134,7 @@ describe('Admin console', () => {
     );
     const fetchMock = vi.mocked(fetch);
     render(<App />);
-    expect(await screen.findByText('Admin console')).toBeInTheDocument();
+    expect(await screen.findByText('管理后台')).toBeInTheDocument();
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(
       fetchMock.mock.calls.some(([input]) => {
@@ -202,22 +202,22 @@ describe('Admin console', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     render(<App />);
-    fireEvent.change(screen.getByLabelText('Tenant code'), { target: { value: 'demo-nl' } });
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'demo-owner' } });
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'owner password' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    await screen.findByText('Admin console');
-    fireEvent.click(screen.getByRole('button', { name: 'Staff' }));
-    fireEvent.click(screen.getByText('Create staff account'));
-    fireEvent.change(screen.getByLabelText('Store'), { target: { value: 'store-1' } });
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'new-staff' } });
-    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'New Staff' } });
-    fireEvent.change(screen.getByLabelText('Temporary password'), {
+    fireEvent.change(screen.getByLabelText('租户代码'), { target: { value: 'demo-nl' } });
+    fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'demo-owner' } });
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'owner password' } });
+    fireEvent.click(screen.getByRole('button', { name: '员工登录' }));
+    await screen.findByText('管理后台');
+    fireEvent.click(screen.getByRole('button', { name: '员工' }));
+    fireEvent.click(screen.getByText('创建员工账号'));
+    fireEvent.change(screen.getByLabelText('门店'), { target: { value: 'store-1' } });
+    fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'new-staff' } });
+    fireEvent.change(screen.getByLabelText('显示名称'), { target: { value: 'New Staff' } });
+    fireEvent.change(screen.getByLabelText('临时密码'), {
       target: { value: 'temporary-password' },
     });
-    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'reviewer' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Create user' }));
-    expect(await screen.findByText('User new-staff created.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('角色'), { target: { value: 'reviewer' } });
+    fireEvent.click(screen.getByRole('button', { name: '创建员工' }));
+    expect(await screen.findByText('员工 new-staff 已创建。')).toBeInTheDocument();
     const createCall = fetchMock.mock.calls.find(([input, init]) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       return url.endsWith('/admin/users') && init?.method === 'POST';
@@ -252,11 +252,11 @@ describe('Admin console', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     render(<App />);
-    fireEvent.change(screen.getByLabelText('Tenant code'), { target: { value: 'demo-nl' } });
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'limited' } });
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'limited password' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    expect(await screen.findByText(/no Admin console permissions/u)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('租户代码'), { target: { value: 'demo-nl' } });
+    fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'limited' } });
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'limited password' } });
+    fireEvent.click(screen.getByRole('button', { name: '员工登录' }));
+    expect(await screen.findByText(/没有管理后台权限/u)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

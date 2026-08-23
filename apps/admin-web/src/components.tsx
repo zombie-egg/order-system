@@ -1,5 +1,6 @@
 import { cloneElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { ApiError, errorMessage } from './api';
+import { useAdminI18n } from './i18n';
 
 export function PageHeader({
   title,
@@ -21,11 +22,12 @@ export function PageHeader({
   );
 }
 
-export function LoadingState({ label = 'Loading…' }: { label?: string }) {
+export function LoadingState({ label = '正在加载…' }: { label?: string }) {
+  const { t } = useAdminI18n();
   return (
     <div className="state-panel" role="status" aria-live="polite">
       <span className="spinner" aria-hidden="true" />
-      <span>{label}</span>
+      <span>{label === '正在加载…' ? t('loading') : label}</span>
     </div>
   );
 }
@@ -43,18 +45,19 @@ export function EmptyState({ title, detail }: { title: string; detail: string })
 }
 
 export function ErrorState({ error, retry }: { error: unknown; retry?: () => void }) {
+  const { t, choose } = useAdminI18n();
   return (
     <section className="notice notice-error" role="alert">
       <div>
-        <strong>Request failed</strong>
+        <strong>{choose('请求失败', 'Verzoek mislukt')}</strong>
         <p>{errorMessage(error)}</p>
         {error instanceof ApiError && error.status === 403 ? (
-          <p>Your account does not have permission for this operation.</p>
+          <p>{choose('当前账号没有执行此操作的权限。', 'Dit account heeft geen toestemming voor deze actie.')}</p>
         ) : null}
       </div>
       {retry ? (
         <button type="button" className="button button-secondary" onClick={retry}>
-          Try again
+          {t('retry')}
         </button>
       ) : null}
     </section>
@@ -76,9 +79,18 @@ export function Notice({
 }
 
 export function StatusBadge({ value }: { value: string | boolean }) {
-  const label = typeof value === 'boolean' ? (value ? 'Enabled' : 'Disabled') : value;
-  const state = label.toLowerCase().replaceAll('_', '-');
-  return <span className={`status-badge status-${state}`}>{label.replaceAll('_', ' ')}</span>;
+  const { language } = useAdminI18n();
+  const raw = typeof value === 'boolean' ? (value ? 'ENABLED' : 'DISABLED') : value;
+  const labels: Record<string, [string, string]> = {
+    ENABLED: ['已启用', 'Ingeschakeld'], DISABLED: ['已停用', 'Uitgeschakeld'], ACTIVE: ['启用', 'Actief'], INACTIVE: ['停用', 'Inactief'],
+    PENDING: ['待处理', 'In afwachting'], PAID: ['已支付', 'Betaald'], REFUNDED: ['已退款', 'Terugbetaald'], FAILED: ['失败', 'Mislukt'],
+    OPEN: ['开放', 'Open'], RESOLVED: ['已处理', 'Afgehandeld'], CLOSED: ['已关闭', 'Gesloten'], QUEUED: ['排队中', 'In wachtrij'], PREPARING: ['制作中', 'In bereiding'], READY: ['待取餐', 'Klaar'],
+    ACKNOWLEDGED: ['已确认', 'Bevestigd'], COLLECTED: ['已取餐', 'Opgehaald'], ON_HOLD: ['已暂停', 'In wachtstand'], UNFULFILLABLE: ['无法履约', 'Niet uitvoerbaar'], CANCELLED: ['已取消', 'Geannuleerd'],
+    PROCESSING: ['处理中', 'In verwerking'], SUCCEEDED: ['成功', 'Geslaagd'], EXECUTED: ['已执行', 'Uitgevoerd'], UNKNOWN: ['未知', 'Onbekend'],
+  };
+  const label = labels[raw]?.[language === 'zh-CN' ? 0 : 1] ?? raw.replaceAll('_', ' ');
+  const state = raw.toLowerCase().replaceAll('_', '-');
+  return <span className={`status-badge status-${state}`}>{label}</span>;
 }
 
 export function Field({
@@ -109,9 +121,10 @@ export function Field({
 }
 
 export function SubmitButton({ pending, children }: { pending: boolean; children: ReactNode }) {
+  const { t } = useAdminI18n();
   return (
     <button type="submit" className="button button-primary" disabled={pending}>
-      {pending ? 'Saving…' : children}
+      {pending ? t('saving') : children}
     </button>
   );
 }

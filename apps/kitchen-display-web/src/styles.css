@@ -1,6 +1,8 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
 
 :root {
+  --cubic-default: cubic-bezier(0.65, 0.05, 0, 1);
   font-family:
     Inter,
     ui-sans-serif,
@@ -26,6 +28,19 @@
   --purple: #b88cff;
   --red: #f05252;
 }
+
+/* Full-screen workflow gate: mirrors the Kiosk menu while retaining the KDS queue. */
+.kinetic-navigation { position: relative; z-index: 90; }
+.kinetic-overlay { display: none; position: fixed; inset: 0; z-index: 90; background: rgb(3 10 17 / 68%); opacity: 0; }
+.kinetic-scrim { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: transparent; }
+.kinetic-menu-panel { position: absolute; top: 2vh; right: 0; width: min(1080px, 92vw); height: min(900px, 96vh); min-height: 560px; overflow: hidden; color: #111; background: #dcddd8; border-radius: 32px 0 0 32px; box-shadow: -24px 28px 80px rgb(0 0 0 / 40%); }
+.kinetic-menu-background, .kinetic-backdrop-layer { position: absolute; inset: 0; overflow: hidden; }
+.kinetic-backdrop-layer { transform: translateX(105%); }
+.kinetic-layer-one { background: #ebe9df; }.kinetic-layer-two { background: #dce4e4; }.kinetic-layer-three { background: #dcddd8; }
+.kinetic-dot { position: absolute; width: clamp(32px, 5vw, 70px); aspect-ratio: 1; border-radius: 50%; opacity: 0; background: #9b9ce1; }.dot-one { top: 14%; left: 18%; }.dot-two { top: 36%; right: 18%; background: #e7a0bd; }.dot-three { right: 33%; bottom: 14%; background: #b99be4; }.dot-four { bottom: 26%; left: 28%; background: #94c7e4; }
+.kinetic-menu-header { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: clamp(1.3rem, 3vw, 2.4rem) clamp(1.4rem, 5vw, 4.7rem); }.kinetic-menu-header > strong { color: #17382d; font-size: .78rem; letter-spacing: .15em; }.kinetic-menu-header strong span { color: #66736c; }.kinetic-menu-header > div { display: flex; align-items: center; gap: 1.3rem; color: #444; font-size: .9rem; font-weight: 800; }.kinetic-menu-header button { display: inline-flex; align-items: center; gap: .7rem; padding: 0; color: #111; background: transparent; border: 0; font-size: clamp(1.35rem, 2.7vw, 2.35rem); font-weight: 950; }.kinetic-menu-header button b { font-size: 2em; font-weight: 300; line-height: .6; }
+.kinetic-menu-content { position: relative; z-index: 1; max-width: 970px; padding: clamp(2rem, 6vh, 5.4rem) clamp(1.5rem, 7vw, 6.4rem) 2rem; }.kinetic-menu-content > p { margin: 0 0 1rem; color: #486656; font-size: .8rem; font-weight: 950; letter-spacing: .13em; }.kinetic-menu-content ul { margin: 0; padding: 0; list-style: none; }.kinetic-menu-item { overflow: hidden; border-top: 1px solid rgb(18 18 18 / 13%); }.kinetic-menu-item:last-child { border-bottom: 1px solid rgb(18 18 18 / 13%); }.kinetic-menu-item button { width: 100%; min-height: clamp(92px, 14vh, 135px); display: grid; grid-template-columns: 48px minmax(0, 1fr) minmax(120px, 180px) 40px; align-items: center; gap: clamp(.5rem, 2vw, 1.4rem); padding: .35rem; color: #111; background: transparent; border: 0; text-align: left; transition: color 160ms ease, background-color 160ms ease, padding 220ms var(--cubic-default); }.kinetic-menu-item button:hover, .kinetic-menu-item button:focus-visible { padding-right: 1.1rem; padding-left: 1.1rem; color: #f6f4ed; background: #242424; outline: 0; }.kinetic-menu-item small { color: #738177; font-weight: 950; letter-spacing: .08em; }.kinetic-menu-item button:hover small { color: #bde5cd; }.kinetic-menu-item strong { overflow: hidden; font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif; font-size: clamp(2.5rem, 6.5vw, 6.2rem); letter-spacing: .02em; line-height: .85; white-space: nowrap; }.kinetic-menu-item span { color: #607166; font-size: .82rem; font-weight: 800; line-height: 1.35; }.kinetic-menu-item button:hover span { color: #d5eadc; }.kinetic-menu-item b { font-size: clamp(1.5rem, 2.8vw, 2.8rem); font-weight: 400; transition: transform 180ms var(--cubic-default); }.kinetic-menu-item button:hover b { transform: translate(4px, -4px); }
+@media (max-width: 760px) { .kinetic-menu-panel { top: 0; width: 100vw; height: 100vh; min-height: 0; border-radius: 0; }.kinetic-menu-header { padding: 1rem 1.2rem; }.kinetic-menu-header > strong span, .kinetic-menu-header > div > span, .kinetic-menu-item span { display: none; }.kinetic-menu-content { padding: 7vh 1.25rem 1.5rem; }.kinetic-menu-item button { min-height: min(18vh, 120px); grid-template-columns: 34px minmax(0, 1fr) 34px; }.kinetic-menu-item strong { font-size: clamp(2.4rem, 13vw, 4.2rem); } }
 
 * {
   box-sizing: border-box;
@@ -1115,3 +1130,39 @@ textarea {
     transition: none !important;
   }
 }
+
+/* Shared SipPilot kiosk language: fixed oversized pastel dots on every KDS page. */
+body,
+.connection-shell,
+.queue-shell {
+  color: #171717;
+  background:
+    radial-gradient(circle at 8% 12%, rgb(184 165 229 / 72%) 0 34px, transparent 35px),
+    radial-gradient(circle at 89% 18%, rgb(236 159 194 / 64%) 0 44px, transparent 45px),
+    radial-gradient(circle at 74% 82%, rgb(188 167 228 / 58%) 0 28px, transparent 29px),
+    radial-gradient(circle at 19% 88%, rgb(240 169 200 / 58%) 0 39px, transparent 40px), #ececea;
+}
+
+.connection-panel,
+.connection-workspace,
+.queue-column,
+.ticket,
+.empty-state,
+.queue-summary,
+.app-header {
+  color: #171717;
+  background: rgb(249 249 247 / 92%);
+  border-color: #c9c9c5;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 9%);
+}
+
+.connection-overview { color: #171717; background: #1f1f1f; }
+.connection-overview h1, .connection-overview .supporting-text { color: #f7f5ef; }
+.connection-overview .eyebrow, .connection-overview .provisioning-note { color: #e1d9f1; }
+.app-header h1, .ticket-number, .column-header h2, .empty-state h2 { color: #111; }
+.queue-column .column-header { background: #242424; border-color: #242424; }
+.queue-column .column-header h2, .queue-column .column-header span { color: #f7f5ef; }
+.ticket { border-top-color: #b9a6e1; }
+.button-primary { color: #fff; background: #202020; box-shadow: none; }
+.button-secondary, .button-quiet { color: #171717; background: #f0edf7; border-color: #bbb4cc; }
+.kinetic-menu-header > div > span { font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: .9rem; }

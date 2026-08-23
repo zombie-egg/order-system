@@ -1,55 +1,49 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { ApiClient } from '../api';
 import { EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge } from '../components';
 import { formatDateTime, formatMoneyMinor } from '../format';
 import { useAsyncResource } from '../hooks';
 import type { Order } from '../types';
+import { useAdminI18n } from '../i18n';
 
 export function OrdersPage({ api }: { api: ApiClient }) {
+  const { t, choose } = useAdminI18n();
   const loader = useCallback(() => api.get<Order[]>('/admin/orders?limit=200'), [api]);
   const resource = useAsyncResource(loader);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!selectedId && resource.data?.[0]) setSelectedId(resource.data[0].id);
-  }, [resource.data, selectedId]);
   const selected = resource.data?.find((order) => order.id === selectedId) ?? null;
 
   return (
     <section>
       <PageHeader
-        title="Orders"
-        description="Read-only order, item, and payment-attempt history for assigned stores."
+        title={t('orders')}
+        description={choose('查看已分配门店的订单、商品与支付尝试记录。', 'Bekijk bestellingen, producten en betaalpogingen van toegewezen vestigingen.')}
         actions={
           <button type="button" className="button button-secondary" onClick={resource.reload}>
-            Refresh
+            {t('refresh')}
           </button>
         }
       />
-      {resource.loading ? <LoadingState label="Loading orders…" /> : null}
+      {resource.loading ? <LoadingState label={choose('正在加载订单…', 'Bestellingen laden…')} /> : null}
       {resource.error ? <ErrorState error={resource.error} retry={resource.reload} /> : null}
       {resource.data?.length === 0 ? (
-        <EmptyState title="No orders" detail="No orders are available for the assigned stores." />
+        <EmptyState title={choose('暂无订单', 'Geen bestellingen')} detail={choose('已分配门店目前没有可查看的订单。', 'Er zijn geen bestellingen zichtbaar voor de toegewezen vestigingen.')} />
       ) : null}
       {resource.data?.length ? (
-        <div className="split-layout split-wide">
+        selected ? (
+          <OrderDetail order={selected} onBack={() => setSelectedId(null)} />
+        ) : (
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Order</th>
-                  <th>Payment</th>
-                  <th>Total</th>
-                  <th>Date</th>
+                  <th>{t('order')}</th><th>{t('payment')}</th><th>{t('total')}</th><th>{t('date')}</th>
                 </tr>
               </thead>
               <tbody>
                 {resource.data.map((order) => (
-                  <tr
-                    key={order.id}
-                    className={selectedId === order.id ? 'row-selected' : ''}
-                    onClick={() => setSelectedId(order.id)}
-                  >
+                  <tr key={order.id}>
                     <td>
                       <button
                         type="button"
@@ -70,45 +64,50 @@ export function OrdersPage({ api }: { api: ApiClient }) {
               </tbody>
             </table>
           </div>
-          {selected ? <OrderDetail order={selected} /> : null}
-        </div>
+        )
       ) : null}
     </section>
   );
 }
 
-function OrderDetail({ order }: { order: Order }) {
+function OrderDetail({ order, onBack }: { order: Order; onBack: () => void }) {
+  const { t, choose } = useAdminI18n();
   return (
     <article className="card order-detail">
       <header className="card-header">
         <div>
-          <h2>Order {order.display_number}</h2>
+          <h2>{t('order')} {order.display_number}</h2>
           <p className="monospace">{order.id}</p>
         </div>
-        <div className="status-stack">
-          <StatusBadge value={order.status} />
-          <StatusBadge value={order.payment_status} />
+        <div className="order-detail-actions">
+          <div className="status-stack">
+            <StatusBadge value={order.status} />
+            <StatusBadge value={order.payment_status} />
+          </div>
+          <button type="button" className="button button-secondary" onClick={onBack}>
+            {choose('返回订单列表', 'Terug naar bestellingen')}
+          </button>
         </div>
       </header>
       <dl className="metric-grid">
         <div>
-          <dt>Total</dt>
+          <dt>{t('total')}</dt>
           <dd>{formatMoneyMinor(order.total_minor, order.currency, order.locale)}</dd>
         </div>
         <div>
-          <dt>Paid</dt>
+          <dt>{choose('已支付', 'Betaald')}</dt>
           <dd>{formatMoneyMinor(order.paid_minor, order.currency, order.locale)}</dd>
         </div>
         <div>
-          <dt>Refunded</dt>
+          <dt>{choose('已退款', 'Terugbetaald')}</dt>
           <dd>{formatMoneyMinor(order.refunded_minor, order.currency, order.locale)}</dd>
         </div>
         <div>
-          <dt>Tax</dt>
+          <dt>{choose('税费', 'Belasting')}</dt>
           <dd>{formatMoneyMinor(order.tax_minor, order.currency, order.locale)}</dd>
         </div>
       </dl>
-      <h3>Items</h3>
+      <h3>{choose('商品', 'Producten')}</h3>
       <ul className="item-list">
         {order.items.map((item) => (
           <li key={item.id}>
@@ -127,21 +126,21 @@ function OrderDetail({ order }: { order: Order }) {
           </li>
         ))}
       </ul>
-      <h3>Payment attempts</h3>
+      <h3>{choose('支付尝试', 'Betaalpogingen')}</h3>
       {order.payment_attempts.length === 0 ? (
-        <p className="muted">No payment attempt recorded.</p>
+        <p className="muted">{choose('暂无支付尝试记录。', 'Geen betaalpoging geregistreerd.')}</p>
       ) : (
         <ul className="item-list">
           {order.payment_attempts.map((attempt) => (
             <li key={attempt.id}>
               <div>
                 <strong>
-                  Attempt {attempt.attempt_number} · {attempt.provider}
+                  {choose('第', 'Poging ')}{attempt.attempt_number}{choose(' 次', '')} · {attempt.provider}
                 </strong>
                 <span>
                   {attempt.payment_method} · {formatDateTime(attempt.requested_at)}
                 </span>
-                {attempt.failure_code ? <small>Failure: {attempt.failure_code}</small> : null}
+                {attempt.failure_code ? <small>{choose('失败：', 'Mislukt: ')}{attempt.failure_code}</small> : null}
               </div>
               <StatusBadge value={attempt.status} />
             </li>

@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     business_timezone: str = "Europe/Amsterdam"
 
     database_url: str = "sqlite+aiosqlite:///./var/dev.db"
+    # Local edge deployments keep product imagery beside the database. In a cloud
+    # deployment this path should point to persistent mounted storage (or be
+    # replaced by an object-storage adapter).
+    media_storage_dir: str = "./var/media"
     cors_origins: list[str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",

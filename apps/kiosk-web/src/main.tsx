@@ -11,6 +11,6 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <App />
+    <App initialLocale="zh-CN" />
   </StrictMode>,
 );
