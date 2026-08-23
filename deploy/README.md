@@ -68,6 +68,8 @@ docker compose -f deploy/compose.prod.yaml --env-file deploy/.env.production \
   exec -T postgres pg_dump -U sippilot sippilot | gzip > backup-$(date +%F).sql.gz
 ```
 
+> `nginx.conf` 和三个前端都是在**构建时**打进镜像的，所以改了它们之后必须带 `--build`。只跑 `up -d` 会沿用旧镜像，配置改动不生效。
+
 命令较长，可以在 shell 里加个别名：
 
 ```bash
