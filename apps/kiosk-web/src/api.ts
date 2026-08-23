@@ -72,6 +72,11 @@ export class ApiError extends Error {
 export function normalizeKioskApiBaseUrl(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) throw new Error('API-adres is verplicht.');
+  // Same-origin deployments (one reverse proxy in front of the API and the
+  // three web apps) configure a relative path such as `/api/v1`.
+  if (trimmed.startsWith('/')) {
+    return trimmed.replace(/\/+$/, '');
+  }
   let parsed: URL;
   try {
     parsed = new URL(trimmed);

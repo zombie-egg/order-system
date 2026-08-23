@@ -100,6 +100,10 @@ describe('KioskApiClient', () => {
     );
   });
 
+  it('keeps a same-origin relative base path and strips trailing slashes', () => {
+    expect(normalizeKioskApiBaseUrl(' /api/v1/ ')).toBe('/api/v1');
+  });
+
   it('calls the kiosk status and heartbeat endpoints with the device credentials', async () => {
     const fetchMock = vi
       .fn()

@@ -16,7 +16,7 @@ import type { StorePolicy, StoreWithPolicy } from '../types';
 import { useAdminI18n } from '../i18n';
 
 export function StoresPage({ api, canWrite }: { api: ApiClient; canWrite: boolean }) {
-  const { t, choose } = useAdminI18n();
+  const { choose } = useAdminI18n();
   const loader = useCallback(() => api.get<StoreWithPolicy[]>('/admin/organization/stores'), [api]);
   const resource = useAsyncResource(loader);
   const [selectedId, setSelectedId] = useState<string | null>(null);

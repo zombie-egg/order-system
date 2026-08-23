@@ -8,6 +8,10 @@ describe('normalizeApiBaseUrl', () => {
     );
   });
 
+  it('keeps a same-origin relative base path and strips trailing slashes', () => {
+    expect(normalizeApiBaseUrl(' /api/v1/ ')).toBe('/api/v1');
+  });
+
   it('rejects credential-bearing and non-HTTP addresses', () => {
     expect(() => normalizeApiBaseUrl('file:///C:/edge-api')).toThrow(/HTTP or HTTPS/);
     expect(() => normalizeApiBaseUrl('https://staff:secret@example.test/api/v1')).toThrow(
