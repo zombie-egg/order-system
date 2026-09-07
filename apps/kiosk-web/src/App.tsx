@@ -55,6 +55,7 @@ const settledPaymentStatuses = new Set([
   'REFUNDED',
 ]);
 const DEVICE_REFRESH_INTERVAL_MS = 30_000;
+const DEVICE_OFFLINE_FAILURE_THRESHOLD = 2;
 const CHECKOUT_SESSION_KEY = 'smart-drink:kiosk-checkout-session';
 const CHECKOUT_SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 const kioskCopy = {
@@ -368,18 +369,35 @@ export function App({ api: providedApi }: AppProps) {
   const sessionReadyRef = useRef(false);
   const restoredOrderIdRef = useRef<string | null>(null);
   const customizerTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const statusCheckInFlightRef = useRef(false);
+  const heartbeatInFlightRef = useRef(false);
+  const consecutiveStatusFailuresRef = useRef(0);
 
   const refreshDeviceStatus = useCallback(
     async (showBusy = false) => {
-      if (!api) return;
+      if (!api || statusCheckInFlightRef.current) return;
+      statusCheckInFlightRef.current = true;
       if (showBusy) setStatusBusy(true);
+
+      if (!heartbeatInFlightRef.current) {
+        heartbeatInFlightRef.current = true;
+        void api.heartbeat().catch(() => undefined).finally(() => {
+          heartbeatInFlightRef.current = false;
+        });
+      }
+
       try {
-        const [, response] = await Promise.all([api.heartbeat(), api.getStoreStatus()]);
+        const response = await api.getStoreStatus();
         setStoreStatus(response);
+        consecutiveStatusFailuresRef.current = 0;
         setConnectionState('online');
       } catch {
-        setConnectionState('offline');
+        consecutiveStatusFailuresRef.current += 1;
+        if (consecutiveStatusFailuresRef.current >= DEVICE_OFFLINE_FAILURE_THRESHOLD) {
+          setConnectionState('offline');
+        }
       } finally {
+        statusCheckInFlightRef.current = false;
         if (showBusy) setStatusBusy(false);
       }
     },
@@ -430,17 +448,31 @@ export function App({ api: providedApi }: AppProps) {
 
   useEffect(() => {
     if (!api) return;
+    statusCheckInFlightRef.current = false;
+    heartbeatInFlightRef.current = false;
+    consecutiveStatusFailuresRef.current = 0;
     setConnectionState('checking');
     void refreshDeviceStatus();
     const timer = window.setInterval(() => void refreshDeviceStatus(), DEVICE_REFRESH_INTERVAL_MS);
-    const markOffline = () => setConnectionState('offline');
-    const reconnect = () => void refreshDeviceStatus();
+    const markOffline = () => {
+      consecutiveStatusFailuresRef.current = DEVICE_OFFLINE_FAILURE_THRESHOLD;
+      setConnectionState('offline');
+    };
+    const reconnect = () => {
+      setConnectionState((current) => current === 'offline' ? 'checking' : current);
+      void refreshDeviceStatus();
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refreshDeviceStatus();
+    };
     window.addEventListener('offline', markOffline);
     window.addEventListener('online', reconnect);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener('offline', markOffline);
       window.removeEventListener('online', reconnect);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
   }, [api, refreshDeviceStatus]);
 

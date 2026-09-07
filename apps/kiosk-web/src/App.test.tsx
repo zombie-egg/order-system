@@ -229,6 +229,58 @@ describe('Customer kiosk ordering workflow', () => {
     expect(vi.mocked(api.getStoreStatus)).toHaveBeenCalledTimes(1);
   });
 
+  it('does not block ordering for one transient status or heartbeat failure', async () => {
+    const status = vi
+      .fn()
+      .mockResolvedValueOnce({
+        store_id: 'store-1', accepting_orders: true, currency: 'EUR', locale: 'nl-NL',
+        takeaway_fee_enabled: false, takeaway_fee_minor: 0,
+      })
+      .mockRejectedValueOnce(new TypeError('temporary proxy failure'))
+      .mockResolvedValueOnce({
+        store_id: 'store-1', accepting_orders: true, currency: 'EUR', locale: 'nl-NL',
+        takeaway_fee_enabled: false, takeaway_fee_minor: 0,
+      });
+    const api = apiMock({
+      getStoreStatus: status,
+      heartbeat: vi.fn().mockRejectedValue(new TypeError('heartbeat failed')),
+    });
+    render(<App api={api} />);
+
+    const addButton = await screen.findByRole('button', { name: 'Latte toevoegen' });
+    expect(addButton).toBeEnabled();
+    window.dispatchEvent(new Event('online'));
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText('Bestellen is tijdelijk niet beschikbaar')).not.toBeInTheDocument();
+    expect(addButton).toBeEnabled();
+
+    window.dispatchEvent(new Event('online'));
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(3));
+    expect(addButton).toBeEnabled();
+  });
+
+  it('blocks new orders after two consecutive store-status failures', async () => {
+    const status = vi
+      .fn()
+      .mockResolvedValueOnce({
+        store_id: 'store-1', accepting_orders: true, currency: 'EUR', locale: 'nl-NL',
+        takeaway_fee_enabled: false, takeaway_fee_minor: 0,
+      })
+      .mockRejectedValue(new TypeError('network unavailable'));
+    const api = apiMock({ getStoreStatus: status });
+    render(<App api={api} />);
+
+    await screen.findByRole('button', { name: 'Latte toevoegen' });
+    window.dispatchEvent(new Event('online'));
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText('Bestellen is tijdelijk niet beschikbaar')).not.toBeInTheDocument();
+
+    window.dispatchEvent(new Event('online'));
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(3));
+    expect(await screen.findByText('Bestellen is tijdelijk niet beschikbaar')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Latte toevoegen' })).toBeDisabled();
+  });
+
   it('validates required product options before adding a line', async () => {
     render(<App api={apiMock()} />);
     await screen.findByRole('heading', { name: 'Warme dranken' });
