@@ -125,4 +125,53 @@ describe('ProductsPricingPage', () => {
       { method: 'DELETE' },
     ));
   });
+
+  it('edits the complete selling price and sends the derived minor-unit delta', async () => {
+    const request = vi.fn(() => Promise.resolve(undefined));
+    const optionGroups = [{
+      id: 'group-1', store_id: 'store-1', code: 'size',
+      translations: { 'nl-NL': 'Formaat' }, sort_order: 0, active: true,
+      values: [{
+        id: 'large', code: 'large', translations: { 'nl-NL': 'Groot' },
+        sort_order: 0, active: true,
+      }],
+    }];
+    const productsWithOptions: AdminProductList = {
+      ...products,
+      products: [{
+        ...products.products[0]!,
+        option_rules: [{
+          option_group_id: 'group-1', minimum_selections: 1, maximum_selections: 1,
+          sort_order: 0, default_option_value_id: 'large',
+        }],
+        option_prices: { large: 50 },
+      }],
+    };
+    const api = {
+      get: vi.fn((path: string) => {
+        if (path.endsWith('/products')) return Promise.resolve(productsWithOptions);
+        if (path.endsWith('/option-groups')) return Promise.resolve(optionGroups);
+        return Promise.resolve([]);
+      }),
+      request,
+      post: vi.fn(),
+      patch: vi.fn(),
+    } as unknown as ApiClient;
+
+    render(
+      <AdminI18nProvider>
+        <ProductsPricingPage api={api} stores={[store]} canWrite />
+      </AdminI18nProvider>,
+    );
+
+    const input = await screen.findByRole('spinbutton', { name: 'Groot 规格售价' });
+    expect(input).toHaveValue(5.39);
+    fireEvent.change(input, { target: { value: '6.00' } });
+    fireEvent.blur(input);
+
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      '/admin/catalog/stores/store-1/products/product-1/options/large/price',
+      { method: 'PUT', body: { price_delta_minor: 111 } },
+    ));
+  });
 });

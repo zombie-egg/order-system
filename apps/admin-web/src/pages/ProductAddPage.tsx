@@ -20,6 +20,7 @@ export function ProductAddPage({ api, stores, canWrite }: Props) {
   const [categoryId, setCategoryId] = useState('');
   const [optionGroups, setOptionGroups] = useState<AdminOptionGroup[]>([]);
   const [selectedOptionGroupIds, setSelectedOptionGroupIds] = useState<string[]>([]);
+  const [variantPrices, setVariantPrices] = useState<Record<string, string>>({});
   const [newOptionGroupName, setNewOptionGroupName] = useState('');
   const [newOptionValues, setNewOptionValues] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -120,7 +121,16 @@ export function ProductAddPage({ api, stores, canWrite }: Props) {
       const rawPrice = data.get('price');
       const description = typeof rawDescription === 'string' ? rawDescription.trim() : '';
       const priceMajor = typeof rawPrice === 'string' ? rawPrice.trim() : '';
-      await api.post<{ id: string }>('/admin/catalog/products', {
+      const basePriceMinor = priceMajor ? parseMajorMoney(priceMajor) : 0;
+      const selectedVariantPrices = optionGroups
+        .filter((group) => selectedOptionGroupIds.includes(group.id))
+        .flatMap((group) => group.values)
+        .filter((value) => value.active && variantPrices[value.id]?.trim())
+        .map((value) => ({
+          valueId: value.id,
+          priceMinor: parseMajorMoney(variantPrices[value.id]!),
+        }));
+      const createdProduct = await api.post<{ id: string }>('/admin/catalog/products', {
         store_ids: selectedStoreIds,
         category_id: targetCategoryId,
         sku: `AUTO-${Date.now()}`,
@@ -141,11 +151,21 @@ export function ProductAddPage({ api, stores, canWrite }: Props) {
           default_option_value_id:
             optionGroups.find((group) => group.id === optionGroupId)?.values.find((value) => value.active)?.id ?? null,
         })),
-        ...(priceMajor ? { price_minor: parseMajorMoney(priceMajor) } : {}),
+        ...(priceMajor || selectedVariantPrices.length > 0 ? { price_minor: basePriceMinor } : {}),
       });
+      await Promise.all(selectedVariantPrices.map(({ valueId, priceMinor }) => {
+        return api.request(
+          `/admin/catalog/stores/${primaryStoreId}/products/${createdProduct.id}/options/${valueId}/price`,
+          {
+            method: 'PUT',
+            body: { price_delta_minor: priceMinor - basePriceMinor },
+          },
+        );
+      }));
       setImageUrl(null);
       setImagePreview(null);
       setSelectedOptionGroupIds([]);
+      setVariantPrices({});
       form.reset();
       setSuccess(
         choose(
@@ -319,6 +339,41 @@ export function ProductAddPage({ api, stores, canWrite }: Props) {
               ))}
             </div>
           </Field>
+          {optionGroups
+            .filter((group) => selectedOptionGroupIds.includes(group.id))
+            .map((group) => (
+              <Field
+                key={group.id}
+                label={`${group.translations['nl-NL'] ?? group.code} · ${choose('规格售价 (€)', 'Variantprijzen (€)')}`}
+                htmlFor={`pa-variant-${group.id}`}
+                hint={choose(
+                  '填写顾客看到的实际售价；留空则使用商品基础价。',
+                  'Vul de volledige verkoopprijs in; leeg gebruikt de basisprijs.',
+                )}
+              >
+                <div id={`pa-variant-${group.id}`} className="store-check-list">
+                  {group.values.filter((value) => value.active).map((value) => (
+                    <label key={value.id}>
+                      <span>{value.translations['nl-NL'] ?? value.code}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        inputMode="decimal"
+                        value={variantPrices[value.id] ?? ''}
+                        onChange={(event) => setVariantPrices((current) => ({
+                          ...current,
+                          [value.id]: event.target.value,
+                        }))}
+                        placeholder={choose('实际售价', 'Verkoopprijs')}
+                        aria-label={`${value.translations['nl-NL'] ?? value.code} ${choose('规格售价', 'variantprijs')}`}
+                        disabled={!canWrite}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </Field>
+            ))}
           <Field label={choose('直接新建规格组', 'Nieuwe optiegroep maken')} htmlFor="pa-option-name">
             <input
               id="pa-option-name"

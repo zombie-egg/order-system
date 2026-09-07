@@ -270,18 +270,18 @@ export function ProductsPricingPage({ api, stores, canWrite }: Props) {
   };
 
   const saveOptionPrice = async (product: AdminProduct, valueId: string, raw: string) => {
-    let priceDelta: number;
+    let variantPrice: number;
     try {
-      priceDelta = parseMajorMoney(raw);
+      variantPrice = parseMajorMoney(raw);
     } catch {
-      setError(choose('请输入有效的规格加价。', 'Voer een geldige optietoeslag in.'));
+      setError(choose('请输入有效的规格售价。', 'Voer een geldige variantprijs in.'));
       return;
     }
     setBusy(`option-price-${product.id}-${valueId}`);
     try {
       await api.request(`/admin/catalog/stores/${storeId}/products/${product.id}/options/${valueId}/price`, {
         method: 'PUT',
-        body: { price_delta_minor: priceDelta },
+        body: { price_delta_minor: variantPrice - (product.price_minor ?? 0) },
       });
       await load();
     } catch (cause) {
@@ -510,8 +510,12 @@ export function ProductsPricingPage({ api, stores, canWrite }: Props) {
                             <input
                               type="number"
                               step="0.01"
-                              defaultValue={(((product.option_prices ?? {})[value.id] ?? 0) / 100).toFixed(2)}
-                              aria-label={`${value.translations['nl-NL'] ?? value.code} ${choose('加价', 'toeslag')}`}
+                              min="0"
+                              defaultValue={(
+                                ((product.price_minor ?? 0) + ((product.option_prices ?? {})[value.id] ?? 0)) /
+                                100
+                              ).toFixed(2)}
+                              aria-label={`${value.translations['nl-NL'] ?? value.code} ${choose('规格售价', 'variantprijs')}`}
                               onBlur={(event) => void saveOptionPrice(product, value.id, event.currentTarget.value)}
                               disabled={!canWrite}
                             />

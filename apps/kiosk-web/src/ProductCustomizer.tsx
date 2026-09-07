@@ -189,9 +189,11 @@ export function ProductCustomizer(props: ProductCustomizerProps) {
                         />
                         <span>{value.name}</span>
                         <small>
-                          {value.price_delta_minor === 0
-                            ? language === 'zh-CN' ? '已包含' : 'Inbegrepen'
-                            : `+ ${formatMoney(value.price_delta_minor, product.currency, locale)}`}
+                          {formatMoney(
+                            product.price_minor + value.price_delta_minor,
+                            product.currency,
+                            locale,
+                          )}
                         </small>
                       </label>
                     );
