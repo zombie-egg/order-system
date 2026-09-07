@@ -1104,6 +1104,7 @@ body,
 .catalog-row {
   display: grid;
   grid-template-columns: 64px 1fr auto auto;
+  grid-template-areas: "thumb info price actions";
   gap: 1rem;
   align-items: center;
   padding: 0.75rem;
@@ -1112,6 +1113,7 @@ body,
   background: #fff;
 }
 .catalog-thumb {
+  grid-area: thumb;
   width: 64px;
   height: 64px;
   border-radius: 12px;
@@ -1128,6 +1130,7 @@ body,
   display: block;
 }
 .catalog-info {
+  grid-area: info;
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
@@ -1136,6 +1139,7 @@ body,
 .catalog-info strong { color: #1c2b24; }
 .catalog-info small { color: #656565; }
 .catalog-price {
+  grid-area: price;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -1148,9 +1152,67 @@ body,
   border-radius: 8px;
 }
 .catalog-actions {
+  grid-area: actions;
   display: flex;
+  flex-wrap: wrap;
   gap: 0.4rem;
   justify-content: flex-end;
+}
+.catalog-actions .button {
+  flex: 0 0 auto;
+  min-width: 4.75rem;
+  white-space: nowrap;
+}
+.catalog-row:has(.catalog-option-prices) {
+  grid-template-columns: 64px minmax(0, 1fr) minmax(18rem, auto);
+  grid-template-areas:
+    "thumb info price"
+    "thumb options options"
+    "thumb actions actions";
+  align-items: start;
+}
+.catalog-row:has(.catalog-option-prices) .catalog-option-prices {
+  grid-area: options;
+  min-width: 0;
+  width: 100%;
+}
+
+@media (max-width: 1180px) {
+  .catalog-row,
+  .catalog-row:has(.catalog-option-prices) {
+    grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-areas:
+      "thumb info"
+      "thumb price"
+      "options options"
+      "actions actions";
+  }
+
+  .catalog-price {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .catalog-row,
+  .catalog-row:has(.catalog-option-prices) {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "thumb"
+      "info"
+      "price"
+      "options"
+      "actions";
+  }
+
+  .catalog-price strong {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .catalog-actions {
+    justify-content: flex-start;
+  }
 }
 .product-image-preview {
   display: block;
