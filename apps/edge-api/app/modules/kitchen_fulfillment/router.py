@@ -1,17 +1,10 @@
 from __future__ import annotations
 
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
-from app.api.dependencies import (
-    FulfillmentEndpointDependency,
-    Principal,
-    SessionDependency,
-    require_permission,
-)
-from app.core.enums import PermissionCode
+from app.api.dependencies import FulfillmentEndpointDependency, SessionDependency
 from app.modules.kitchen_fulfillment.schemas import (
     FulfillmentHeartbeatResponse,
     FulfillmentTicketResponse,
@@ -24,10 +17,6 @@ from app.modules.kitchen_fulfillment.service import (
 )
 
 router = APIRouter(prefix="/fulfillment", tags=["fulfillment"])
-
-KitchenPrincipal = Annotated[
-    Principal, Depends(require_permission(PermissionCode.KITCHEN_OPERATE.value))
-]
 
 
 @router.post(
@@ -59,9 +48,8 @@ async def post_heartbeat(
 async def get_tickets(
     session: SessionDependency,
     endpoint_principal: FulfillmentEndpointDependency,
-    principal: KitchenPrincipal,
 ) -> list[FulfillmentTicketResponse]:
-    return await list_station_queue(session, endpoint_principal, principal)
+    return await list_station_queue(session, endpoint_principal)
 
 
 @router.post(
@@ -74,12 +62,10 @@ async def post_transition(
     request: TransitionTicketRequest,
     session: SessionDependency,
     endpoint_principal: FulfillmentEndpointDependency,
-    principal: KitchenPrincipal,
 ) -> FulfillmentTicketResponse:
     return await transition_ticket(
         session,
         endpoint_principal,
-        principal,
         ticket_id=ticket_id,
         to_status=request.to_status,
         expected_version=request.expected_version,

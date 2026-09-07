@@ -69,7 +69,7 @@ describe('KioskApiClient', () => {
 
     const promise = client.createQuote('nl-NL', [
       { product_id: 'product-1', quantity: 1, option_value_ids: [] },
-    ]);
+    ], 'DINE_IN');
 
     await expect(promise).rejects.toMatchObject({
       code: 'store_not_accepting_orders',

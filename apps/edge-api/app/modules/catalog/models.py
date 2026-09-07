@@ -16,7 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.enums import PriceBookStatus
+from app.core.enums import PriceBookStatus, ProductStatus
 from app.persistence.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.persistence.types import UtcDateTime, string_enum
 
@@ -57,6 +57,13 @@ class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     preparation_data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     allergen_data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[ProductStatus] = mapped_column(
+        string_enum(ProductStatus, name="product_status"),
+        default=ProductStatus.PUBLISHED,
+        server_default=ProductStatus.PUBLISHED.value,
+        index=True,
+        nullable=False,
+    )
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     archived_at: Mapped[datetime | None] = mapped_column(UtcDateTime())
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
@@ -75,9 +82,10 @@ class ProductTranslation(Base):
 
 class OptionGroup(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "option_group"
-    __table_args__ = (UniqueConstraint("tenant_id", "code"),)
+    __table_args__ = (UniqueConstraint("store_id", "code"),)
 
     tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenant.id"), index=True, nullable=False)
+    store_id: Mapped[UUID] = mapped_column(ForeignKey("store.id"), index=True, nullable=False)
     code: Mapped[str] = mapped_column(String(80), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -130,6 +138,7 @@ class ProductOptionRule(Base):
     option_group_id: Mapped[UUID] = mapped_column(ForeignKey("option_group.id"), primary_key=True)
     minimum_selections: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     maximum_selections: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    default_option_value_id: Mapped[UUID | None] = mapped_column(ForeignKey("option_value.id"))
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 

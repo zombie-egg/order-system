@@ -25,6 +25,7 @@ import {
 import type {
   CartLine,
   CatalogProduct,
+  FulfillmentType,
   KioskStoreStatus,
   KioskOrder,
   KioskReceipt,
@@ -38,7 +39,6 @@ type ConnectionState = 'checking' | 'online' | 'offline';
 
 interface AppProps {
   api?: KioskApi | null;
-  initialLocale?: string;
 }
 
 interface UserFacingError {
@@ -64,7 +64,7 @@ const kioskCopy = {
     progress: '点单进度',
     checking: '正在连接', online: '已连接', offline: '无连接', changeKiosk: '更换设备',
     menu: '饮品菜单', assortment: '精选饮品', freshlyMade: '现点现做', choices: '种选择',
-    explore: '探索菜单', add: '加入', cart: '购物车', order: '你的订单', emptyCart: '请选择饮品开始点单。',
+    explore: '探索菜单', add: '加入', customizable: '可定制 · 展开选择', cart: '购物车', order: '你的订单', emptyCart: '请选择饮品开始点单。',
     estimated: '预计总价', vat: '最终税费与优惠将在下一步计算。', review: '确认订单',
     loading: '正在加载菜单', wait: '请稍候…', unavailable: '菜单暂不可用', device: '修改设备信息',
     paused: '暂时无法点单', pausedDetail: '请联系店员，或稍后再试。', retry: '重新检查',
@@ -80,7 +80,7 @@ const kioskCopy = {
     progress: 'Voortgang van je bestelling',
     checking: 'Controleren', online: 'Verbonden', offline: 'Geen verbinding', changeKiosk: 'Kiosk wisselen',
     menu: 'Menu', assortment: 'Ons assortiment', freshlyMade: 'Vers bereid door ons team', choices: 'keuzes',
-    explore: 'Ontdek menu', add: 'Toevoegen', cart: 'Winkelmand', order: 'Je bestelling', emptyCart: 'Kies een drankje om te beginnen.',
+    explore: 'Ontdek menu', add: 'Toevoegen', customizable: 'Aanpasbaar · keuzes bekijken', cart: 'Winkelmand', order: 'Je bestelling', emptyCart: 'Kies een drankje om te beginnen.',
     estimated: 'Geschat totaal', vat: 'Definitieve BTW en kortingen worden hierna berekend.', review: 'Bestelling controleren',
     loading: 'Menu wordt geladen', wait: 'Even geduld…', unavailable: 'Menu niet beschikbaar', device: 'Apparaatgegevens wijzigen',
     paused: 'Nieuwe bestellingen zijn gepauzeerd', pausedDetail: 'Vraag een medewerker om hulp of probeer het later opnieuw.', retry: 'Opnieuw controleren',
@@ -109,6 +109,7 @@ interface CheckoutSessionSnapshot {
   quote: Quote | null;
   order: KioskOrder | null;
   paymentMethod: PaymentMethod;
+  fulfillmentType: FulfillmentType;
   orderIdempotencyKey: string | null;
   retryIdempotencyKey: string | null;
 }
@@ -123,6 +124,7 @@ function validCheckoutSnapshot(value: unknown): value is CheckoutSessionSnapshot
   if (!['CARD', 'CONTACTLESS', 'APPLE_PAY', 'GOOGLE_PAY'].includes(String(value.paymentMethod))) {
     return false;
   }
+  if (!['DINE_IN', 'TAKEAWAY'].includes(String(value.fulfillmentType))) return false;
   if (!Array.isArray(value.cart)) return false;
   if (value.quote !== null && !isRecord(value.quote)) return false;
   if (value.order !== null && !isRecord(value.order)) return false;
@@ -336,13 +338,12 @@ function ErrorNotice({ error, onRetry }: { error: UserFacingError; onRetry?: () 
   );
 }
 
-export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
+export function App({ api: providedApi }: AppProps) {
   const [initialCheckout] = useState(readCheckoutSession);
   const [api, setApi] = useState<KioskApi | null>(() => providedApi ?? createConfiguredKioskApi());
   const [catalog, setCatalog] = useState<StoreCatalog | null>(null);
-  const [locale, setLocale] = useState<'zh-CN' | 'nl-NL'>(
-    initialLocale === 'zh-CN' ? 'zh-CN' : 'nl-NL',
-  );
+  // The customer ordering interface is always presented in Dutch (nl-NL).
+  const [locale] = useState<'zh-CN' | 'nl-NL'>('nl-NL');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(true);
   const [cart, setCart] = useState<CartLine[]>(() => initialCheckout?.cart ?? []);
@@ -356,6 +357,9 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
   const [statusBusy, setStatusBusy] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
     () => initialCheckout?.paymentMethod ?? 'CONTACTLESS',
+  );
+  const [fulfillmentType, setFulfillmentType] = useState<FulfillmentType>(
+    () => initialCheckout?.fulfillmentType ?? 'DINE_IN',
   );
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState<UserFacingError | null>(null);
@@ -418,10 +422,11 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
       quote,
       order,
       paymentMethod,
+      fulfillmentType,
       orderIdempotencyKey: orderKeyRef.current,
       retryIdempotencyKey: retryKeyRef.current,
     });
-  }, [cart, order, paymentMethod, quote, step]);
+  }, [cart, fulfillmentType, order, paymentMethod, quote, step]);
 
   useEffect(() => {
     if (!api) return;
@@ -515,7 +520,12 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
     detail: locale === 'zh-CN' ? `${category.products.length} 种现调饮品` : `${category.products.length} vers bereide dranken`,
   }));
   const cartQuantity = cart.reduce((total, line) => total + line.quantity, 0);
-  const estimatedTotal = cart.reduce((total, line) => total + cartLineTotal(line), 0);
+  const estimatedProductTotal = cart.reduce((total, line) => total + cartLineTotal(line), 0);
+  const estimatedPackagingFee =
+    fulfillmentType === 'TAKEAWAY' && storeStatus?.takeaway_fee_enabled
+      ? storeStatus.takeaway_fee_minor
+      : 0;
+  const estimatedTotal = estimatedProductTotal + estimatedPackagingFee;
   const activeCurrency = catalog?.currency ?? quote?.currency ?? order?.currency ?? 'EUR';
   const acceptingNewOrders = connectionState === 'online' && storeStatus?.accepting_orders === true;
   const newOrderStep = step === 'browse' || step === 'review';
@@ -633,7 +643,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
     setBusyAction('quote');
     setError(null);
     try {
-      const response = await api.createQuote(locale, cartRequest);
+      const response = await api.createQuote(locale, cartRequest, fulfillmentType);
       setQuote(response);
       setStep('review');
       orderKeyRef.current = null;
@@ -658,6 +668,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
       quote,
       order: null,
       paymentMethod,
+      fulfillmentType,
       orderIdempotencyKey: idempotencyKey,
       retryIdempotencyKey: retryKeyRef.current,
     });
@@ -673,6 +684,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
         quote,
         order: created,
         paymentMethod,
+        fulfillmentType,
         orderIdempotencyKey: idempotencyKey,
         retryIdempotencyKey: retryKeyRef.current,
       });
@@ -700,6 +712,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
       quote: null,
       order: paidOrder,
       paymentMethod,
+      fulfillmentType,
       orderIdempotencyKey: orderKeyRef.current,
       retryIdempotencyKey: retryKeyRef.current,
     });
@@ -773,6 +786,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
       quote,
       order,
       paymentMethod,
+      fulfillmentType,
       orderIdempotencyKey: orderKeyRef.current,
       retryIdempotencyKey: idempotencyKey,
     });
@@ -787,6 +801,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
         quote,
         order: response,
         paymentMethod,
+        fulfillmentType,
         orderIdempotencyKey: orderKeyRef.current,
         retryIdempotencyKey: idempotencyKey,
       });
@@ -840,6 +855,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
     setReceipts([]);
     setError(null);
     setStep('browse');
+    setFulfillmentType('DINE_IN');
     setIsCategoryMenuOpen(true);
     clearCheckoutSession();
     orderKeyRef.current = null;
@@ -884,12 +900,16 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
           disabled={!canResetOrder}
           aria-label={copy.brand}
         >
-          <span className="brand-mark" aria-hidden="true">
-            S
-          </span>
+          {catalog?.logo_url ? (
+            <img className="brand-logo" src={catalog.logo_url} alt="" aria-hidden="true" />
+          ) : (
+            <span className="brand-mark" aria-hidden="true">
+              S
+            </span>
+          )}
           <span>
-            <strong>SipPilot</strong>
-            <small>{copy.brand}</small>
+            <strong>{catalog?.merchant_name ?? 'SipPilot'}</strong>
+            <small>{catalog?.store_name ?? copy.brand}</small>
           </span>
         </button>
         <ol className="step-indicator" aria-label={copy.progress}>
@@ -910,8 +930,8 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
             aria-live="polite"
             title={
               connectionState === 'online'
-                ? (locale === 'zh-CN' ? '点单机已连接到本地服务' : 'Kiosk is verbonden met de lokale service')
-                : (locale === 'zh-CN' ? '正在检查与本地服务的连接' : 'Verbinding met de lokale service wordt gecontroleerd')
+                ? 'Kiosk is verbonden met de lokale service'
+                : 'Verbinding met de lokale service wordt gecontroleerd'
             }
           >
             <span aria-hidden="true" />
@@ -921,10 +941,6 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
                 ? copy.online
                 : copy.offline}
           </span>
-          <div className="language-switch" role="group" aria-label={locale === 'zh-CN' ? '选择语言' : 'Taal kiezen'}>
-            <button type="button" className={locale === 'zh-CN' ? 'active' : ''} onClick={() => setLocale('zh-CN')}>中文</button>
-            <button type="button" className={locale === 'nl-NL' ? 'active' : ''} onClick={() => setLocale('nl-NL')}>NL</button>
-          </div>
           {!providedApi && (
             <button
               className="text-button"
@@ -1031,6 +1047,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
                     <div className="product-copy">
                       <h2>{product.name}</h2>
                       {product.description && <p>{product.description}</p>}
+                      {product.option_groups.length > 0 && <small className="customizable-badge">{copy.customizable}</small>}
                       {allergens.length > 0 && <small>Bevat: {allergens.join(', ')}</small>}
                     </div>
                     <div className="product-footer">
@@ -1106,6 +1123,41 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
               </ul>
             )}
             <div className="cart-summary">
+              <fieldset className="fulfillment-choice">
+                <legend>Waar geniet je van je bestelling?</legend>
+                <label className={fulfillmentType === 'DINE_IN' ? 'selected' : ''}>
+                  <input
+                    type="radio"
+                    name="fulfillment-type"
+                    value="DINE_IN"
+                    checked={fulfillmentType === 'DINE_IN'}
+                    onChange={() => {
+                      setFulfillmentType('DINE_IN');
+                      setQuote(null);
+                    }}
+                  />
+                  <span>Hier eten</span>
+                  <small>Geen verpakkingskosten</small>
+                </label>
+                <label className={fulfillmentType === 'TAKEAWAY' ? 'selected' : ''}>
+                  <input
+                    type="radio"
+                    name="fulfillment-type"
+                    value="TAKEAWAY"
+                    checked={fulfillmentType === 'TAKEAWAY'}
+                    onChange={() => {
+                      setFulfillmentType('TAKEAWAY');
+                      setQuote(null);
+                    }}
+                  />
+                  <span>Meenemen</span>
+                  <small>
+                    {estimatedPackagingFee > 0
+                      ? `Verpakking ${formatMoney(estimatedPackagingFee, activeCurrency, locale)}`
+                      : 'Geen verpakkingskosten'}
+                  </small>
+                </label>
+              </fieldset>
               <p>
                 <span>{copy.estimated}</span>
                 <strong>{formatMoney(estimatedTotal, activeCurrency, locale)}</strong>
@@ -1159,7 +1211,16 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
                 </li>
               ))}
             </ul>
+            <p className="fulfillment-summary">
+              <strong>{quote.fulfillment_type === 'TAKEAWAY' ? 'Meenemen' : 'Hier eten'}</strong>
+            </p>
             <div className="totals">
+              {quote.packaging_fee_minor > 0 && (
+                <p>
+                  <span>Verpakkingskosten</span>
+                  <span>{formatMoney(quote.packaging_fee_minor, quote.currency, quote.locale)}</span>
+                </p>
+              )}
               <p>
                 <span>{copy.subtotal}</span>
                 <span>{formatMoney(quote.subtotal_minor, quote.currency, quote.locale)}</span>
@@ -1260,6 +1321,7 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
             <strong className="payment-amount">
               {formatMoney(order.total_minor, order.currency, order.locale)}
             </strong>
+            <p>{order.fulfillment_type === 'TAKEAWAY' ? 'Meenemen' : 'Hier eten'}</p>
             <div className="payment-actions">
               {order.payment_status === 'INITIATED' && latestPaymentAttempt(order) && (
                 <button
@@ -1346,6 +1408,9 @@ export function App({ api: providedApi, initialLocale = 'nl-NL' }: AppProps) {
                     ? 'Geannuleerd'
                     : 'In voorbereiding'}
               </strong>
+            </p>
+            <p className="fulfillment-summary">
+              {order.fulfillment_type === 'TAKEAWAY' ? 'Meenemen' : 'Hier eten'}
             </p>
             <button
               className="secondary-button"

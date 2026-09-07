@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.enums import ActorType, PromotionType, QuoteStatus
+from app.core.enums import ActorType, FulfillmentType, PromotionType, QuoteStatus
 from app.core.errors import ConflictError, NotFoundError
 from app.core.principals import Principal
 from app.modules.audit.service import add_audit_log
@@ -363,7 +363,13 @@ async def _calculate_line(
     rules = list(
         (
             await session.scalars(
-                select(ProductOptionRule).where(ProductOptionRule.product_id == product.id)
+                select(ProductOptionRule)
+                .join(OptionGroup, OptionGroup.id == ProductOptionRule.option_group_id)
+                .where(
+                    ProductOptionRule.product_id == product.id,
+                    OptionGroup.store_id == store.id,
+                    OptionGroup.active,
+                )
             )
         ).all()
     )
@@ -394,7 +400,11 @@ async def _calculate_line(
         group.id: group
         for group in (
             await session.scalars(
-                select(OptionGroup).where(OptionGroup.id.in_(counts), OptionGroup.active)
+                select(OptionGroup).where(
+                    OptionGroup.id.in_(counts),
+                    OptionGroup.store_id == store.id,
+                    OptionGroup.active,
+                )
             )
         ).all()
     }
@@ -526,7 +536,15 @@ async def create_quote(
         )
         for index, item in enumerate(request.items, start=1)
     ]
-    subtotal = sum(line.base_minor for line in lines)
+    packaging_fee = (
+        policy.takeaway_fee_minor
+        if request.fulfillment_type == FulfillmentType.TAKEAWAY
+        and policy.takeaway_fee_enabled
+        and policy.takeaway_fee_minor > 0
+        else 0
+    )
+    item_subtotal = sum(line.base_minor for line in lines)
+    subtotal = item_subtotal + packaging_fee
     promotion: Promotion | None = None
     total_discount = 0
     if request.promotion_code:
@@ -541,12 +559,12 @@ async def create_quote(
         )
         if promotion is None:
             raise ConflictError("promotion_invalid", "The promotion code is invalid or inactive")
-        if subtotal < promotion.minimum_total_minor:
+        if item_subtotal < promotion.minimum_total_minor:
             raise ConflictError("promotion_minimum_not_met", "The promotion minimum was not met")
         if promotion.promotion_type == PromotionType.PERCENTAGE:
-            total_discount = _round_half_up(subtotal * promotion.value, 1_000_000)
+            total_discount = _round_half_up(item_subtotal * promotion.value, 1_000_000)
         else:
-            total_discount = min(promotion.value, subtotal)
+            total_discount = min(promotion.value, item_subtotal)
     discounts = _allocate_discount(total_discount, [line.base_minor for line in lines])
     for line, discount in zip(lines, discounts, strict=True):
         line.discount_minor = discount
@@ -563,9 +581,19 @@ async def create_quote(
             line.tax_minor = _round_half_up(discounted_base * line.tax_rate_ppm, 1_000_000)
             line.total_minor = line.net_minor + line.tax_minor
 
-    net_total = sum(line.net_minor for line in lines)
-    tax_total = sum(line.tax_minor for line in lines)
-    total = sum(line.total_minor for line in lines)
+    fee_tax_category = lines[0].product.tax_category_code
+    fee_tax_rate = lines[0].tax_rate_ppm
+    if price_book.prices_include_tax:
+        fee_tax = _round_half_up(packaging_fee * fee_tax_rate, 1_000_000 + fee_tax_rate)
+        fee_net = packaging_fee - fee_tax
+        fee_total = packaging_fee
+    else:
+        fee_net = packaging_fee
+        fee_tax = _round_half_up(packaging_fee * fee_tax_rate, 1_000_000)
+        fee_total = fee_net + fee_tax
+    net_total = sum(line.net_minor for line in lines) + fee_net
+    tax_total = sum(line.tax_minor for line in lines) + fee_tax
+    total = sum(line.total_minor for line in lines) + fee_total
     quote = PriceQuote(
         store_id=store.id,
         kiosk_id=kiosk.id,
@@ -577,6 +605,8 @@ async def create_quote(
         currency=price_book.currency,
         locale=request.locale,
         prices_include_tax=price_book.prices_include_tax,
+        fulfillment_type=request.fulfillment_type,
+        packaging_fee_minor=packaging_fee,
         subtotal_minor=subtotal,
         discount_minor=total_discount,
         net_minor=net_total,
@@ -587,6 +617,8 @@ async def create_quote(
             "price_book_id": str(price_book.id),
             "tax_policy_version_id": str(tax_policy.id),
             "promotion_code": promotion.code if promotion else None,
+            "fulfillment_type": request.fulfillment_type.value,
+            "packaging_fee_minor": packaging_fee,
         },
         expires_at=now + timedelta(seconds=settings.quote_ttl_seconds),
     )
@@ -658,6 +690,10 @@ async def create_quote(
                 allergen_snapshot=deepcopy(line.product.allergen_data),
             )
         )
+    if packaging_fee:
+        fee_bucket = tax_totals[(fee_tax_category, fee_tax_rate)]
+        fee_bucket[0] += fee_net
+        fee_bucket[1] += fee_tax
     tax_responses: list[QuoteTaxLineResponse] = []
     for (tax_category_code, rate_ppm), (taxable_minor, tax_minor) in sorted(tax_totals.items()):
         session.add(
@@ -695,6 +731,8 @@ async def create_quote(
         currency=quote.currency,
         locale=quote.locale,
         prices_include_tax=quote.prices_include_tax,
+        fulfillment_type=quote.fulfillment_type,
+        packaging_fee_minor=quote.packaging_fee_minor,
         subtotal_minor=quote.subtotal_minor,
         discount_minor=quote.discount_minor,
         net_minor=quote.net_minor,

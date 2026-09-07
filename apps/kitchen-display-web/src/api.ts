@@ -43,6 +43,7 @@ export interface FulfillmentTicketItem {
   name: string;
   preparation_snapshot: Record<string, unknown>;
   allergen_snapshot: Record<string, unknown>;
+  options?: string[];
 }
 
 export interface FulfillmentTicket {
@@ -54,6 +55,7 @@ export interface FulfillmentTicket {
   display_number: string;
   status: FulfillmentStatus;
   priority: number;
+  fulfillment_type?: 'DINE_IN' | 'TAKEAWAY';
   failure_reason_code: FulfillmentFailureReason | null;
   failure_detail: string | null;
   acknowledged_at: string | null;
@@ -68,7 +70,6 @@ export interface KitchenApiCredentials {
   apiBaseUrl: string;
   endpointId: string;
   endpointKey: string;
-  accessToken: string;
 }
 
 export interface TransitionTicketRequest {
@@ -226,13 +227,6 @@ function deviceHeaders(credentials: Pick<KitchenApiCredentials, 'endpointId' | '
   };
 }
 
-function operatorHeaders(credentials: KitchenApiCredentials) {
-  return {
-    ...deviceHeaders(credentials),
-    Authorization: `Bearer ${credentials.accessToken}`,
-  };
-}
-
 export function createAccessToken(
   apiBaseUrl: string,
   request: LoginRequest,
@@ -260,7 +254,7 @@ export function heartbeat(
 export function listTickets(credentials: KitchenApiCredentials): Promise<FulfillmentTicket[]> {
   return requestJson<FulfillmentTicket[]>(credentials.apiBaseUrl, '/fulfillment/tickets', {
     method: 'GET',
-    headers: operatorHeaders(credentials),
+    headers: deviceHeaders(credentials),
   });
 }
 
@@ -275,7 +269,7 @@ export function transitionTicket(
     {
       method: 'POST',
       headers: {
-        ...operatorHeaders(credentials),
+        ...deviceHeaders(credentials),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(request),

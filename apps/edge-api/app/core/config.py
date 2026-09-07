@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     jwt_issuer: str = "smart-drink-edge"
     jwt_audience: str = "smart-drink-operations"
     access_token_minutes: int = Field(default=30, ge=5, le=240)
+    refresh_token_minutes: int = Field(
+        default=60 * 24 * 30, ge=60, le=60 * 24 * 365
+    )
     login_max_failures: int = Field(default=5, ge=3, le=20)
     login_failure_window_seconds: int = Field(default=900, ge=60, le=86_400)
     login_lockout_seconds: int = Field(default=900, ge=30, le=86_400)

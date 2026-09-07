@@ -15,7 +15,7 @@ from app.persistence.base import Base
 EDGE_API_ROOT = Path(__file__).resolve().parents[1]
 ALEMBIC_INI = EDGE_API_ROOT / "alembic.ini"
 MIGRATION = EDGE_API_ROOT / "migrations" / "versions" / "7207959333e0_phase_3_backend_schema.py"
-REVISION = "7207959333e0"
+REVISION = "a4e7f9012b3c"
 
 
 def _database_url(database: Path) -> str:

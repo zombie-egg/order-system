@@ -11,7 +11,12 @@ interface ProductCustomizerProps {
 }
 
 function initialSelections(product: CatalogProduct): Record<string, string[]> {
-  return Object.fromEntries(product.option_groups.map((group) => [group.id, []]));
+  return Object.fromEntries(
+    product.option_groups.map((group) => [
+      group.id,
+      group.values.filter((value) => value.active !== false && value.is_default).map((value) => value.id),
+    ]),
+  );
 }
 
 function groupError(
@@ -169,7 +174,7 @@ export function ProductCustomizer(props: ProductCustomizerProps) {
                   </span>
                 </legend>
                 <div className="option-list">
-                  {group.values.map((value) => {
+                  {group.values.filter((value) => value.active !== false).map((value) => {
                     const checked = selected.includes(value.id);
                     return (
                       <label

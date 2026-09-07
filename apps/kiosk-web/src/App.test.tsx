@@ -6,6 +6,9 @@ import type { KioskOrder, KioskReceipt, Quote, StoreCatalog } from './types';
 
 const catalog: StoreCatalog = {
   store_id: 'store-1',
+  store_name: 'Amsterdam Store',
+  merchant_name: 'SipPilot',
+  logo_url: null,
   locale: 'nl-NL',
   currency: 'EUR',
   price_book_id: 'book-1',
@@ -68,6 +71,8 @@ const quote: Quote = {
   currency: 'EUR',
   locale: 'nl-NL',
   prices_include_tax: true,
+  fulfillment_type: 'DINE_IN',
+  packaging_fee_minor: 0,
   subtotal_minor: 425,
   discount_minor: 0,
   net_minor: 390,
@@ -112,6 +117,8 @@ function order(paymentStatus: KioskOrder['payment_status']): KioskOrder {
     currency: 'EUR',
     locale: 'nl-NL',
     prices_include_tax: true,
+    fulfillment_type: 'DINE_IN',
+    packaging_fee_minor: 0,
     subtotal_minor: 425,
     discount_minor: 0,
     net_minor: 390,
@@ -167,6 +174,8 @@ function apiMock(overrides: Partial<KioskApi> = {}): KioskApi {
       accepting_orders: true,
       currency: 'EUR',
       locale: 'nl-NL',
+      takeaway_fee_enabled: true,
+      takeaway_fee_minor: 25,
     }),
     heartbeat: vi.fn().mockResolvedValue({
       resource_id: 'kiosk-1',
@@ -208,6 +217,8 @@ describe('Customer kiosk ordering workflow', () => {
         accepting_orders: false,
         currency: 'EUR',
         locale: 'nl-NL',
+        takeaway_fee_enabled: false,
+        takeaway_fee_minor: 0,
       }),
     });
     render(<App api={api} />);
@@ -257,7 +268,7 @@ describe('Customer kiosk ordering workflow', () => {
     await screen.findByRole('heading', { name: 'Klopt je bestelling?' });
     expect(vi.mocked(api.createQuote)).toHaveBeenCalledWith('nl-NL', [
       { product_id: 'latte', quantity: 1, option_value_ids: ['large'] },
-    ]);
+    ], 'DINE_IN');
     expect(screen.getByText('Prijzen zijn inclusief BTW.')).toBeInTheDocument();
     expect(screen.getByText('€ 0,35')).toBeInTheDocument();
   });
@@ -316,6 +327,7 @@ describe('Customer kiosk ordering workflow', () => {
         quote: null,
         order: null,
         paymentMethod: 'CONTACTLESS',
+        fulfillmentType: 'DINE_IN',
         orderIdempotencyKey: null,
         retryIdempotencyKey: null,
       }),
@@ -439,6 +451,7 @@ describe('Customer kiosk ordering workflow', () => {
         quote: null,
         order: order('UNKNOWN'),
         paymentMethod: 'CONTACTLESS',
+        fulfillmentType: 'DINE_IN',
         orderIdempotencyKey: 'stable-order-key',
         retryIdempotencyKey: null,
       }),

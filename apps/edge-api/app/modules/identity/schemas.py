@@ -36,6 +36,11 @@ class AccessTokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_at: datetime
+    refresh_token: str | None = None
+
+
+class RefreshRequest(StrictRequestModel):
+    refresh_token: str = Field(min_length=1, max_length=1024)
 
 
 class PrincipalResponse(BaseModel):

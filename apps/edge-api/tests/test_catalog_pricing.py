@@ -12,7 +12,7 @@ from sqlalchemy import select
 import app.persistence.models  # noqa: F401
 from app.core.config import Settings
 from app.core.enums import PromotionType
-from app.core.errors import ConflictError
+from app.core.errors import ConflictError, ForbiddenError
 from app.core.principals import Principal
 from app.modules.audit.models import AuditLog
 from app.modules.catalog.models import OptionValue, StoreProductAvailability
@@ -303,6 +303,7 @@ async def test_authoritative_quote_reconciles_price_discount_and_inclusive_vat(
             kiosk_id=seed.kiosk_id,
             request=CreateQuoteRequest(
                 locale="en",
+                fulfillment_type="DINE_IN",
                 promotion_code="SAVE10",
                 items=[
                     QuoteItemRequest(
@@ -333,6 +334,53 @@ async def test_authoritative_quote_reconciles_price_discount_and_inclusive_vat(
         "pricing.promotion.created",
         "pricing.tax_policy.created",
     } <= audit_actions
+
+
+@pytest.mark.anyio
+async def test_catalog_write_is_scoped_to_assigned_stores(
+    commerce_database: tuple[Database, CommerceSeed],
+) -> None:
+    """A store-scoped catalog manager cannot create categories/products in other stores."""
+    database, seed = commerce_database
+    foreign_store_id = uuid4()
+    async with database.session_factory() as session, session.begin():
+        with pytest.raises(ForbiddenError):
+            await create_category(
+                session,
+                _principal(seed),
+                CreateCategoryRequest(
+                    store_id=foreign_store_id,
+                    code="Foreign",
+                    translations={"nl-NL": "Vreemd", "en": "Foreign"},
+                ),
+            )
+        with pytest.raises(ForbiddenError):
+            await create_product(
+                session,
+                _principal(seed),
+                CreateProductRequest(
+                    store_id=foreign_store_id,
+                    category_id=seed.store_id,
+                    sku="FOREIGN-01",
+                    tax_category_code="BEVERAGE",
+                    translations={"en": ProductTranslationInput(name="Foreign")},
+                ),
+            )
+        with pytest.raises(ForbiddenError):
+            await create_option_group(
+                session,
+                _principal(seed),
+                CreateOptionGroupRequest(
+                    store_id=foreign_store_id,
+                    code="foreign-size",
+                    translations={"nl-NL": "Vreemd formaat"},
+                    values=[
+                        CreateOptionValueInput(
+                            code="foreign-value", translations={"nl-NL": "Vreemd"}
+                        )
+                    ],
+                ),
+            )
 
 
 @pytest.mark.anyio

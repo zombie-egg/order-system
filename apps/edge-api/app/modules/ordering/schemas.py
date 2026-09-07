@@ -7,7 +7,13 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.core.api_models import StrictRequestModel
-from app.core.enums import OrderStatus, PaymentMethod, PaymentProvider, PaymentStatus
+from app.core.enums import (
+    FulfillmentType,
+    OrderStatus,
+    PaymentMethod,
+    PaymentProvider,
+    PaymentStatus,
+)
 
 
 class CreateOrderRequest(StrictRequestModel):
@@ -71,6 +77,8 @@ class OrderResponse(BaseModel):
     currency: str
     locale: str
     prices_include_tax: bool
+    fulfillment_type: FulfillmentType = FulfillmentType.DINE_IN
+    packaging_fee_minor: int = 0
     subtotal_minor: int
     discount_minor: int
     net_minor: int
@@ -121,6 +129,8 @@ class KioskOrderResponse(BaseModel):
     currency: str
     locale: str
     prices_include_tax: bool
+    fulfillment_type: FulfillmentType = FulfillmentType.DINE_IN
+    packaging_fee_minor: int = 0
     subtotal_minor: int
     discount_minor: int
     net_minor: int

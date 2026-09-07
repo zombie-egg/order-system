@@ -98,14 +98,18 @@ export function createApiClient(options: {
   apiBaseUrl: string;
   getAccessToken: () => string | null;
   onUnauthorized: (error: ApiError) => void;
+  refresh?: () => Promise<string | null>;
 }): ApiClient {
   const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl);
 
-  const request = async <T>(path: string, requestOptions: RequestOptions = {}): Promise<T> => {
+  const attempt = async (
+    path: string,
+    requestOptions: RequestOptions,
+    token: string | null,
+    authenticated: boolean,
+  ): Promise<Response> => {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 30_000);
-    const token = options.getAccessToken();
-    const authenticated = requestOptions.authenticated ?? true;
     const headers = new Headers({
       Accept: 'application/json',
       'X-Correlation-ID': createCorrelationId(),
@@ -117,8 +121,6 @@ export function createApiClient(options: {
     if (authenticated && token) {
       headers.set('Authorization', `Bearer ${token}`);
     }
-
-    let response: Response;
     try {
       const baseUrl = new URL(`${apiBaseUrl}/`, window.location.origin);
       const relativePath = path.replace(/^\/+/, '');
@@ -133,7 +135,7 @@ export function createApiClient(options: {
           code: 'invalid_request_path',
         });
       }
-      response = await fetch(requestUrl, {
+      return await fetch(requestUrl, {
         method: requestOptions.method ?? 'GET',
         headers,
         body: requestOptions.body === undefined ? undefined : JSON.stringify(requestOptions.body),
@@ -156,6 +158,20 @@ export function createApiClient(options: {
       );
     } finally {
       window.clearTimeout(timeout);
+    }
+  };
+
+  const request = async <T>(path: string, requestOptions: RequestOptions = {}): Promise<T> => {
+    const authenticated = requestOptions.authenticated ?? true;
+    let response = await attempt(path, requestOptions, options.getAccessToken(), authenticated);
+
+    // On a 401 for an authenticated call, silently refresh the access token once
+    // and retry the request (see the periodic refresh for the proactive path).
+    if (response.status === 401 && authenticated && options.refresh) {
+      const newToken = await options.refresh();
+      if (newToken) {
+        response = await attempt(path, requestOptions, newToken, authenticated);
+      }
     }
 
     if (!response.ok) {

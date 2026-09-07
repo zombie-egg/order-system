@@ -8,10 +8,6 @@ const session: StoredKitchenSession = {
   apiBaseUrl: 'http://127.0.0.1:8000/api/v1',
   endpointId: '11111111-1111-1111-1111-111111111111',
   endpointKey: 'endpoint-secret',
-  accessToken: 'staff-token',
-  accessTokenExpiresAt: '2099-01-01T00:00:00Z',
-  tenantCode: 'NL-DEMO',
-  username: 'kitchen.operator',
 };
 
 const ticket: FulfillmentTicket = {
@@ -84,18 +80,9 @@ function queueFetch(tickets: FulfillmentTicket[]) {
 }
 
 describe('Kitchen Display', () => {
-  it('connects with staff and device credentials before loading the paid-order queue', async () => {
+  it('connects with device credentials before loading the paid-order queue', async () => {
     const fetchMock = vi.fn<typeof fetch>((input, init) => {
       const url = requestUrl(input);
-      if (url.endsWith('/auth/token')) {
-        return Promise.resolve(
-          response({
-            access_token: session.accessToken,
-            token_type: 'bearer',
-            expires_at: session.accessTokenExpiresAt,
-          }),
-        );
-      }
       if (url.endsWith('/fulfillment/heartbeat')) {
         const headers = new Headers(init?.headers);
         expect(headers.get('X-Endpoint-ID')).toBe(session.endpointId);
@@ -104,7 +91,7 @@ describe('Kitchen Display', () => {
       }
       if (url.endsWith('/fulfillment/tickets')) {
         const headers = new Headers(init?.headers);
-        expect(headers.get('Authorization')).toBe(`Bearer ${session.accessToken}`);
+        expect(headers.get('Authorization')).toBeNull();
         expect(headers.get('X-Endpoint-ID')).toBe(session.endpointId);
         expect(headers.get('X-Endpoint-Key')).toBe(session.endpointKey);
         return Promise.resolve(response([ticket]));
@@ -114,27 +101,20 @@ describe('Kitchen Display', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(<App />);
-    expect(screen.getByRole('heading', { name: '连接制作看板' })).toBeInTheDocument();
-    expect(screen.getByText(/当前版本仅在本浏览器标签中保存工位密钥/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Bereidingsscherm verbinden' })).toBeInTheDocument();
+    expect(screen.getByText(/alleen in dit browsertabblad bewaard/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Tenantcode')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Gebruikersnaam')).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('工位 ID'), {
+    fireEvent.change(screen.getByLabelText('Werkstation-ID'), {
       target: { value: session.endpointId },
     });
-    fireEvent.change(screen.getByLabelText('工位密钥'), {
+    fireEvent.change(screen.getByLabelText('Werkstationsleutel'), {
       target: { value: session.endpointKey },
     });
-    fireEvent.change(screen.getByLabelText('租户代码'), {
-      target: { value: session.tenantCode },
-    });
-    fireEvent.change(screen.getByLabelText('用户名'), {
-      target: { value: session.username },
-    });
-    fireEvent.change(screen.getByLabelText('密码'), {
-      target: { value: 'a-valid-password' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: '连接看板' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Scherm verbinden' }));
 
-    expect(await screen.findByRole('heading', { name: '制作看板' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Bereidingsscherm' })).toBeInTheDocument();
     expect(await screen.findByText('#A-101')).toBeInTheDocument();
     expect(screen.getByText('2×')).toBeInTheDocument();
     expect(screen.getByText('Iced matcha latte')).toBeInTheDocument();
@@ -169,19 +149,19 @@ describe('Kitchen Display', () => {
 
     render(<App />);
     expect(await screen.findByText('#A-101')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '无法制作' }));
-    fireEvent.click(screen.getByRole('button', { name: '确认无法制作' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Niet te bereiden' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bevestigen als niet te bereiden' }));
     expect(
-      screen.getByText('请选择运营原因并填写审核说明。'),
+      screen.getByText('Kies een operationele reden en vul een toelichting in.'),
     ).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('运营原因'), {
+    fireEvent.change(screen.getByLabelText('Operationele reden'), {
       target: { value: 'OUT_OF_STOCK' },
     });
-    fireEvent.change(screen.getByRole('textbox', { name: /审核说明/ }), {
+    fireEvent.change(screen.getByRole('textbox', { name: /Toelichting/ }), {
       target: { value: 'Matcha ingredient unavailable after stock check.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: '确认无法制作' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bevestigen als niet te bereiden' }));
 
     await waitFor(() => {
       expect(transitionBody).toEqual({
@@ -191,7 +171,7 @@ describe('Kitchen Display', () => {
         failure_detail: 'Matcha ingredient unavailable after stock check.',
       });
     });
-    expect(await screen.findByRole('heading', { name: '暂无待制作订单' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Geen bestellingen om te bereiden' })).toBeInTheDocument();
   });
 
   it('clears an invalid session and returns the operator to sign-in on HTTP 401', async () => {
@@ -217,9 +197,9 @@ describe('Kitchen Display', () => {
     render(<App />);
 
     expect(
-      await screen.findByRole('heading', { name: '连接制作看板' }),
+      await screen.findByRole('heading', { name: 'Bereidingsscherm verbinden' }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent(/无效或已过期/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/ongeldig of verlopen/i);
     expect(sessionStorage.length).toBe(0);
   });
 
@@ -247,8 +227,8 @@ describe('Kitchen Display', () => {
     const { container } = render(<App />);
 
     expect(await screen.findByText('#A-102')).toBeInTheDocument();
-    expect(screen.getByText('优先级 20')).toBeInTheDocument();
-    expect(screen.getByText('12 分钟')).toBeInTheDocument();
+    expect(screen.getByText('Prioriteit 20')).toBeInTheDocument();
+    expect(screen.getByText('12 min')).toBeInTheDocument();
     const cards = Array.from(container.querySelectorAll('.ticket'));
     expect(cards[0]).toHaveTextContent('#A-102');
     expect(cards[0]).toHaveClass('ticket-priority', 'age-critical');
@@ -259,11 +239,11 @@ describe('Kitchen Display', () => {
     vi.stubGlobal('fetch', queueFetch([ticket]));
 
     render(<App />);
-    const cannotFulfil = await screen.findByRole('button', { name: '无法制作' });
+    const cannotFulfil = await screen.findByRole('button', { name: 'Niet te bereiden' });
     cannotFulfil.focus();
     fireEvent.click(cannotFulfil);
 
-    const reason = screen.getByLabelText('运营原因');
+    const reason = screen.getByLabelText('Operationele reden');
     expect(reason).toHaveFocus();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -280,9 +260,9 @@ describe('Kitchen Display', () => {
     Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: false });
     fireEvent(window, new Event('offline'));
 
-    expect(screen.getByRole('alert')).toHaveTextContent(/恢复与 API 的连接后再操作订单/i);
-    expect(screen.getByRole('button', { name: '接受订单' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '刷新队列' })).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/Herstel de API-verbinding/i);
+    expect(screen.getByRole('button', { name: 'Bestelling accepteren' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Wachtrij vernieuwen' })).toBeDisabled();
   });
 
   it('shows a recoverable offline state instead of an endless first-load spinner', async () => {
@@ -294,9 +274,9 @@ describe('Kitchen Display', () => {
     render(<App />);
 
     expect(
-      await screen.findByRole('heading', { name: '离线时无法查看队列' }),
+      await screen.findByRole('heading', { name: 'Wachtrij niet beschikbaar terwijl u offline bent' }),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/正在加载制作队列/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bereidingswachtrij laden/i)).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

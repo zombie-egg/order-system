@@ -232,7 +232,9 @@ async def _seed_catalog(session: AsyncSession, bootstrap: BootstrapResult) -> in
         sort_order: int,
         values: tuple[tuple[str, str, str], ...],
     ) -> tuple[OptionGroup, dict[str, OptionValue]]:
-        group = OptionGroup(tenant_id=tenant_id, code=code, sort_order=sort_order)
+        group = OptionGroup(
+            tenant_id=tenant_id, store_id=store_id, code=code, sort_order=sort_order
+        )
         session.add(group)
         await session.flush()
         session.add_all(
