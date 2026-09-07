@@ -216,6 +216,27 @@ export function ProductsPricingPage({ api, stores, canWrite }: Props) {
     }
   };
 
+  const deleteGroup = async (group: AdminOptionGroup) => {
+    const name = group.translations['nl-NL'] ?? group.code;
+    if (!window.confirm(choose(
+      `规格组“${name}”将从所有商品中移除。历史订单不会改变。确定删除吗？`,
+      `Optiegroep “${name}” wordt van alle producten verwijderd. Historische bestellingen blijven ongewijzigd. Verwijderen?`,
+    ))) return;
+    setBusy(`group-${group.id}`);
+    setError(null);
+    try {
+      await api.request(`/admin/catalog/stores/${storeId}/option-groups/${group.id}`, {
+        method: 'DELETE',
+      });
+      await load();
+      setMessage(choose('规格组已删除。', 'Optiegroep verwijderd.'));
+    } catch (cause) {
+      setError(cause);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const updateValue = async (groupId: string, valueId: string, values: Record<string, unknown>) => {
     setBusy(`value-${valueId}`);
     try {
@@ -374,6 +395,14 @@ export function ProductsPricingPage({ api, stores, canWrite }: Props) {
                   <input type="checkbox" checked={group.active} onChange={() => void updateGroup(group, { active: !group.active })} disabled={!canWrite} />
                   {choose('启用', 'Actief')}
                 </label>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => void deleteGroup(group)}
+                  disabled={!canWrite || busy === `group-${group.id}`}
+                >
+                  {choose('删除', 'Verwijderen')}
+                </button>
               </div>
               <div className="option-value-list">
                 {group.values.map((value) => (

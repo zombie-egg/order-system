@@ -37,6 +37,7 @@ from app.modules.catalog.service import (
     create_option_value,
     create_price_book,
     create_product,
+    delete_option_group,
     delete_product,
     get_store_catalog,
     list_admin_categories,
@@ -135,6 +136,20 @@ async def patch_option_group(
 ) -> ResourceCreatedResponse:
     group = await update_option_group(session, principal, store_id, group_id, request)
     return ResourceCreatedResponse(id=group.id)
+
+
+@admin_router.delete(
+    "/stores/{store_id}/option-groups/{group_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    operation_id="delete_catalog_option_group",
+)
+async def delete_admin_option_group(
+    store_id: UUID,
+    group_id: UUID,
+    session: SessionDependency,
+    principal: CatalogWritePrincipal,
+) -> None:
+    await delete_option_group(session, principal, store_id, group_id)
 
 
 @admin_router.post(

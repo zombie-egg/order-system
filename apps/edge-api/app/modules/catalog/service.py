@@ -1194,6 +1194,48 @@ async def update_option_group(
     return group
 
 
+async def delete_option_group(
+    session: AsyncSession,
+    principal: Principal,
+    store_id: UUID,
+    group_id: UUID,
+) -> None:
+    group = await _get_scoped_option_group(session, principal, store_id, group_id)
+    product_ids = list(
+        (
+            await session.scalars(
+                select(ProductOptionRule.product_id).where(
+                    ProductOptionRule.option_group_id == group.id
+                )
+            )
+        ).all()
+    )
+    await session.execute(
+        delete(ProductOptionRule).where(ProductOptionRule.option_group_id == group.id)
+    )
+    archived_at = utc_now()
+    await session.execute(
+        update(OptionValue)
+        .where(OptionValue.option_group_id == group.id)
+        .values(active=False, archived_at=archived_at)
+    )
+    original_code = group.code
+    group.code = f"{group.code[:60]}-deleted-{str(group.id)[:8]}"
+    group.active = False
+    group.archived_at = archived_at
+    await session.flush()
+    _audit_catalog_change(
+        session,
+        principal,
+        store_id=store_id,
+        action="catalog.option_group.deleted",
+        target_type="option_group",
+        target_id=group.id,
+        before={"code": original_code, "product_ids": [str(value) for value in product_ids]},
+        after={"archived_at": archived_at.isoformat()},
+    )
+
+
 async def create_option_value(
     session: AsyncSession,
     principal: Principal,

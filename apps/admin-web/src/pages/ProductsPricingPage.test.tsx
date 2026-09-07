@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ApiClient } from '../api';
 import { AdminI18nProvider } from '../i18n';
@@ -86,5 +86,43 @@ describe('ProductsPricingPage', () => {
         { method: 'PUT', body: { price_minor: 525 } },
       ),
     );
+  });
+
+  it('deletes an option group after explicit confirmation', async () => {
+    const request = vi.fn(() => Promise.resolve(undefined));
+    const optionGroups = [{
+      id: 'group-1',
+      store_id: 'store-1',
+      code: 'size',
+      translations: { 'nl-NL': 'Formaat' },
+      sort_order: 0,
+      active: true,
+      values: [],
+    }];
+    const api = {
+      get: vi.fn((path: string) => {
+        if (path.endsWith('/products')) return Promise.resolve(products);
+        if (path.endsWith('/option-groups')) return Promise.resolve(optionGroups);
+        return Promise.resolve([]);
+      }),
+      request,
+      post: vi.fn(),
+      patch: vi.fn(),
+    } as unknown as ApiClient;
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(
+      <AdminI18nProvider>
+        <ProductsPricingPage api={api} stores={[store]} canWrite />
+      </AdminI18nProvider>,
+    );
+
+    const groupSection = (await screen.findByDisplayValue('Formaat')).closest('section');
+    expect(groupSection).not.toBeNull();
+    fireEvent.click(within(groupSection!).getByRole('button', { name: '删除' }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith(
+      '/admin/catalog/stores/store-1/option-groups/group-1',
+      { method: 'DELETE' },
+    ));
   });
 });

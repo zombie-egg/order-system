@@ -15,7 +15,12 @@ from app.core.enums import PromotionType
 from app.core.errors import ConflictError, ForbiddenError
 from app.core.principals import Principal
 from app.modules.audit.models import AuditLog
-from app.modules.catalog.models import OptionValue, StoreProductAvailability
+from app.modules.catalog.models import (
+    OptionGroup,
+    OptionValue,
+    ProductOptionRule,
+    StoreProductAvailability,
+)
 from app.modules.catalog.schemas import (
     CreateCategoryRequest,
     CreateOptionGroupRequest,
@@ -32,7 +37,9 @@ from app.modules.catalog.service import (
     create_option_group,
     create_price_book,
     create_product,
+    delete_option_group,
     get_store_catalog,
+    list_admin_option_groups,
     set_product_availability,
 )
 from app.modules.identity.models import UserAccount
@@ -381,6 +388,42 @@ async def test_catalog_write_is_scoped_to_assigned_stores(
                     ],
                 ),
             )
+        with pytest.raises(ForbiddenError):
+            await delete_option_group(
+                session,
+                _principal(seed),
+                foreign_store_id,
+                uuid4(),
+            )
+
+
+@pytest.mark.anyio
+async def test_delete_option_group_detaches_products_and_preserves_history_rows(
+    commerce_database: tuple[Database, CommerceSeed],
+) -> None:
+    database, seed = commerce_database
+    async with database.session_factory() as session, session.begin():
+        value = await session.get(OptionValue, seed.allowed_option_value_id)
+        assert value is not None
+        group_id = value.option_group_id
+        await delete_option_group(session, _principal(seed), seed.store_id, group_id)
+
+        group = await session.get(OptionGroup, group_id)
+        assert group is not None
+        assert group.active is False
+        assert group.archived_at is not None
+        assert "-deleted-" in group.code
+        assert value.active is False
+        assert value.archived_at is not None
+        assert await session.scalar(
+            select(ProductOptionRule).where(ProductOptionRule.option_group_id == group_id)
+        ) is None
+
+    async with database.session_factory() as session:
+        listed_groups = await list_admin_option_groups(
+            session, _principal(seed), seed.store_id
+        )
+    assert group_id not in {listed.id for listed in listed_groups}
 
 
 @pytest.mark.anyio
