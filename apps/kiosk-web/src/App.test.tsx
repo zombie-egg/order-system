@@ -281,6 +281,29 @@ describe('Customer kiosk ordering workflow', () => {
     expect(screen.getByRole('button', { name: 'Latte toevoegen' })).toBeDisabled();
   });
 
+  it('keeps the mobile cart collapsed until requested and checks out from the drawer', async () => {
+    const api = apiMock();
+    render(<App api={api} />);
+    await addLargeLatte();
+
+    const cartTrigger = screen.getByRole('button', { name: /Bestelling bekijken/ });
+    expect(cartTrigger).toHaveAttribute('aria-expanded', 'false');
+    expect(cartTrigger).toHaveTextContent('1 product');
+    expect(cartTrigger).toHaveTextContent(/€\s*4,25/);
+
+    fireEvent.click(cartTrigger);
+    expect(cartTrigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: 'Verder kiezen' })).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Verder kiezen' }));
+    expect(cartTrigger).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(cartTrigger);
+    fireEvent.click(screen.getByRole('button', { name: 'Bestelling controleren' }));
+    expect(await screen.findByRole('heading', { name: 'Klopt je bestelling?' })).toBeInTheDocument();
+    expect(api.createQuote).toHaveBeenCalledTimes(1);
+  });
+
   it('validates required product options before adding a line', async () => {
     render(<App api={apiMock()} />);
     await screen.findByRole('heading', { name: 'Warme dranken' });

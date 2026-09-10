@@ -3529,3 +3529,140 @@ body,
     min-height: 76px;
   }
 }
+
+/* Mobile cart drawer: keep the menu unobstructed until the customer asks to
+   review the order. Desktop and dedicated 1080px portrait terminals retain
+   their always-visible cart layouts. */
+.mobile-cart-trigger,
+.mobile-cart-close,
+.mobile-cart-backdrop {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .kiosk-shell .product-section,
+  .kiosk-shell .product-section:last-child {
+    padding-bottom: calc(7.5rem + env(safe-area-inset-bottom));
+  }
+
+  .kiosk-shell .cart-panel {
+    max-height: 84vh;
+    max-height: 84dvh;
+    overflow-y: auto;
+    z-index: 46;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(calc(100% + 2rem));
+    transition:
+      transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0s linear 260ms;
+  }
+
+  .kiosk-shell .cart-panel.cart-panel-open {
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0);
+    transition-delay: 0s;
+  }
+
+  .kiosk-shell .cart-panel,
+  .kiosk-shell .cart-panel .cart-summary {
+    background-color: rgb(248 248 246 / 96%);
+    background-image: linear-gradient(
+      145deg,
+      rgb(255 255 255 / 92%),
+      rgb(238 239 235 / 88%)
+    );
+    -webkit-backdrop-filter: blur(26px) saturate(130%);
+    backdrop-filter: blur(26px) saturate(130%);
+  }
+
+  .kiosk-shell .cart-heading {
+    gap: 0.65rem;
+  }
+
+  .kiosk-shell .cart-heading > div:first-child {
+    min-width: 0;
+    margin-right: auto;
+  }
+
+  .kiosk-shell .mobile-cart-close {
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.55rem 0.75rem;
+    white-space: nowrap;
+  }
+
+  .kiosk-shell .mobile-cart-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    padding: 0;
+    background: rgb(10 14 12 / 38%);
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+
+  .kiosk-shell .mobile-cart-trigger {
+    width: calc(100% - 1.5rem);
+    min-height: 76px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    position: fixed;
+    right: 0.75rem;
+    bottom: max(0.75rem, env(safe-area-inset-bottom));
+    left: 0.75rem;
+    z-index: 44;
+    padding: 0.8rem 1.05rem;
+    color: #fff;
+    background-color: #171717;
+    background-image: linear-gradient(to bottom, rgb(38 38 38 / 98%), rgb(8 8 8 / 96%));
+    border-color: rgb(0 0 0 / 76%);
+    border-radius: 19px;
+    box-shadow: 0 14px 34px rgb(0 0 0 / 24%), inset 1px 1px 1px rgb(255 255 255 / 22%);
+    text-align: left;
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    transition: opacity 160ms ease, transform 180ms ease;
+  }
+
+  .kiosk-shell .mobile-cart-trigger > span {
+    display: grid;
+    gap: 0.16rem;
+    color: #fff;
+    font-weight: 850;
+  }
+
+  .kiosk-shell .mobile-cart-trigger small {
+    color: rgb(255 255 255 / 68%);
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  .kiosk-shell .mobile-cart-trigger strong {
+    color: #fff;
+    font-size: 1.15rem;
+    white-space: nowrap;
+  }
+
+  .kiosk-shell .mobile-cart-trigger[aria-expanded='true'] {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(0.5rem);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .kiosk-shell .cart-panel,
+    .kiosk-shell .mobile-cart-trigger {
+      transition: none;
+    }
+  }
+}

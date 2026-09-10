@@ -348,6 +348,7 @@ export function App({ api: providedApi }: AppProps) {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(true);
   const [cart, setCart] = useState<CartLine[]>(() => initialCheckout?.cart ?? []);
+  const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   const [customizing, setCustomizing] = useState<CatalogProduct | null>(null);
   const [step, setStep] = useState<CheckoutStep>(() => recoveredStep(initialCheckout));
   const [quote, setQuote] = useState<Quote | null>(() => initialCheckout?.quote ?? null);
@@ -369,9 +370,15 @@ export function App({ api: providedApi }: AppProps) {
   const sessionReadyRef = useRef(false);
   const restoredOrderIdRef = useRef<string | null>(null);
   const customizerTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const mobileCartTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const mobileCartCloseRef = useRef<HTMLButtonElement | null>(null);
   const statusCheckInFlightRef = useRef(false);
   const heartbeatInFlightRef = useRef(false);
   const consecutiveStatusFailuresRef = useRef(0);
+  const closeMobileCart = useCallback(() => {
+    setIsMobileCartOpen(false);
+    window.requestAnimationFrame(() => mobileCartTriggerRef.current?.focus());
+  }, []);
 
   const refreshDeviceStatus = useCallback(
     async (showBusy = false) => {
@@ -495,6 +502,17 @@ export function App({ api: providedApi }: AppProps) {
     }, 10_000);
     return () => window.clearInterval(timer);
   }, [api, order, receipts.length, step]);
+
+  useEffect(() => {
+    if (!isMobileCartOpen) return;
+    mobileCartCloseRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      closeMobileCart();
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [closeMobileCart, isMobileCartOpen]);
 
   useEffect(() => {
     if (!api || !initialCheckout?.order) return;
@@ -677,6 +695,7 @@ export function App({ api: providedApi }: AppProps) {
     try {
       const response = await api.createQuote(locale, cartRequest, fulfillmentType);
       setQuote(response);
+      setIsMobileCartOpen(false);
       setStep('review');
       orderKeyRef.current = null;
     } catch (quoteError) {
@@ -889,6 +908,7 @@ export function App({ api: providedApi }: AppProps) {
     setStep('browse');
     setFulfillmentType('DINE_IN');
     setIsCategoryMenuOpen(true);
+    setIsMobileCartOpen(false);
     clearCheckoutSession();
     orderKeyRef.current = null;
     retryKeyRef.current = null;
@@ -1103,13 +1123,33 @@ export function App({ api: providedApi }: AppProps) {
             </div>
           </section>
 
-          <aside className="cart-panel" aria-labelledby="cart-title">
+          {isMobileCartOpen && (
+            <button
+              className="mobile-cart-backdrop"
+              type="button"
+              aria-label="Winkelmand sluiten"
+              onClick={closeMobileCart}
+            />
+          )}
+          <aside
+            id="mobile-cart-panel"
+            className={`cart-panel ${isMobileCartOpen ? 'cart-panel-open' : ''}`}
+            aria-labelledby="cart-title"
+          >
             <div className="cart-heading">
               <div>
                 <p>{copy.cart}</p>
                 <h2 id="cart-title">{copy.order}</h2>
               </div>
               <span aria-label={`${cartQuantity} producten`}>{cartQuantity}</span>
+              <button
+                ref={mobileCartCloseRef}
+                className="mobile-cart-close"
+                type="button"
+                onClick={closeMobileCart}
+              >
+                Verder kiezen
+              </button>
             </div>
             {cart.length === 0 ? (
               <div className="empty-cart">
@@ -1205,6 +1245,20 @@ export function App({ api: providedApi }: AppProps) {
               </button>
             </div>
           </aside>
+          <button
+            ref={mobileCartTriggerRef}
+            className="mobile-cart-trigger"
+            type="button"
+            aria-controls="mobile-cart-panel"
+            aria-expanded={isMobileCartOpen}
+            onClick={() => setIsMobileCartOpen(true)}
+          >
+            <span>
+              Bestelling bekijken
+              <small>{cartQuantity} {cartQuantity === 1 ? 'product' : 'producten'}</small>
+            </span>
+            <strong>{formatMoney(estimatedTotal, activeCurrency, locale)}</strong>
+          </button>
           </main>
         </>
       )}
