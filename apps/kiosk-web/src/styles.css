@@ -3637,18 +3637,18 @@ body,
   .kiosk-shell .mobile-cart-trigger > span {
     display: grid;
     gap: 0.16rem;
-    color: #fff;
+    color: #111;
     font-weight: 850;
   }
 
   .kiosk-shell .mobile-cart-trigger small {
-    color: rgb(255 255 255 / 68%);
+    color: rgb(17 17 17 / 72%);
     font-size: 0.72rem;
     font-weight: 700;
   }
 
   .kiosk-shell .mobile-cart-trigger strong {
-    color: #fff;
+    color: #111;
     font-size: 1.15rem;
     white-space: nowrap;
   }
