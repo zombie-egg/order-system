@@ -88,10 +88,38 @@ async def test_complete_http_sale_fulfillment_review_refund_and_reporting_workfl
                         "max_open_tickets": 50,
                         "kds_heartbeat_seconds": 30,
                         "printer_fallback_enabled": False,
+                        "takeaway_fee_enabled": True,
+                        "takeaway_fee_minor": 35,
                         "expected_version": 1,
                     },
                 )
             )
+            option_group = _assert_success(
+                await client.post(
+                    "/api/v1/admin/catalog/option-groups",
+                    headers=staff_headers,
+                    json={
+                        "store_id": bootstrap.store_id,
+                        "code": "formaat",
+                        "translations": {"nl-NL": "Formaat", "en": "Size"},
+                        "values": [
+                            {
+                                "code": "groot",
+                                "translations": {"nl-NL": "Groot", "en": "Large"},
+                            }
+                        ],
+                    },
+                ),
+                201,
+            )
+            option_groups_response = await client.get(
+                f"/api/v1/admin/catalog/stores/{bootstrap.store_id}/option-groups",
+                headers=staff_headers,
+            )
+            assert option_groups_response.status_code == 200
+            option_groups = option_groups_response.json()
+            assert isinstance(option_groups, list)
+            option_value_id = option_groups[0]["values"][0]["id"]
             category = _assert_success(
                 await client.post(
                     "/api/v1/admin/catalog/categories",
@@ -120,7 +148,14 @@ async def test_complete_http_sale_fulfillment_review_refund_and_reporting_workfl
                         },
                         "preparation_data": {"workflow": "manual-bar"},
                         "allergen_data": {"contains": []},
-                        "option_rules": [],
+                        "option_rules": [
+                            {
+                                "option_group_id": option_group["id"],
+                                "minimum_selections": 1,
+                                "maximum_selections": 1,
+                                "default_option_value_id": option_value_id,
+                            }
+                        ],
                     },
                 ),
                 201,
@@ -153,7 +188,12 @@ async def test_complete_http_sale_fulfillment_review_refund_and_reporting_workfl
                             {
                                 "product_id": product["id"],
                                 "price_minor": 350,
-                                "option_prices": [],
+                                "option_prices": [
+                                    {
+                                        "option_value_id": option_value_id,
+                                        "price_delta_minor": 75,
+                                    }
+                                ],
                             }
                         ],
                     },
@@ -168,6 +208,24 @@ async def test_complete_http_sale_fulfillment_review_refund_and_reporting_workfl
             )
             assert catalog_response.status_code == 200, catalog_response.text
             assert catalog_response.json()["categories"][0]["products"][0]["name"] == "Koffie"
+            tampered_quote = await client.post(
+                "/api/v1/kiosk/quotes",
+                headers=kiosk_headers,
+                json={
+                    "locale": "nl-NL",
+                    "fulfillment_type": "TAKEAWAY",
+                    "packaging_fee_minor": 1,
+                    "items": [
+                        {
+                            "product_id": product["id"],
+                            "quantity": 1,
+                            "option_value_ids": [option_value_id],
+                            "price_minor": 1,
+                        }
+                    ],
+                },
+            )
+            assert tampered_quote.status_code == 422
 
             heartbeat_response = await client.post(
                 "/api/v1/fulfillment/heartbeat",
@@ -175,25 +233,29 @@ async def test_complete_http_sale_fulfillment_review_refund_and_reporting_workfl
             )
             assert heartbeat_response.status_code == 200, heartbeat_response.text
 
-            async def create_kiosk_order(key_suffix: str) -> dict[str, Any]:
+            async def create_kiosk_order(
+                key_suffix: str, fulfillment_type: str, expected_total: int
+            ) -> dict[str, Any]:
                 quote = _assert_success(
                     await client.post(
                         "/api/v1/kiosk/quotes",
                         headers=kiosk_headers,
                         json={
                             "locale": "nl-NL",
+                            "fulfillment_type": fulfillment_type,
                             "items": [
                                 {
                                     "product_id": product["id"],
                                     "quantity": 1,
-                                    "option_value_ids": [],
+                                    "option_value_ids": [option_value_id],
                                 }
                             ],
                         },
                     ),
                     201,
                 )
-                assert quote["total_minor"] == 350
+                assert quote["total_minor"] == expected_total
+                assert quote["items"][0]["option_total_minor"] == 75
                 return _assert_success(
                     await client.post(
                         "/api/v1/kiosk/orders",
@@ -206,7 +268,7 @@ async def test_complete_http_sale_fulfillment_review_refund_and_reporting_workfl
                     201,
                 )
 
-            sale_order = await create_kiosk_order("sale")
+            sale_order = await create_kiosk_order("sale", "TAKEAWAY", 460)
             sale_attempt_id = sale_order["payment_attempts"][0]["id"]
             paid_order = _assert_success(
                 await client.post(
@@ -216,6 +278,8 @@ async def test_complete_http_sale_fulfillment_review_refund_and_reporting_workfl
             )
             assert paid_order["status"] == "CONFIRMED"
             assert paid_order["payment_status"] == "PAID"
+            assert paid_order["packaging_fee_minor"] == 35
+            assert paid_order["fulfillment_type"] == "TAKEAWAY"
 
             queue_headers = {**endpoint_headers, **staff_headers}
             queue_response = await client.get(
@@ -226,6 +290,8 @@ async def test_complete_http_sale_fulfillment_review_refund_and_reporting_workfl
             queue = queue_response.json()
             assert len(queue) == 1
             ticket = queue[0]
+            assert ticket["fulfillment_type"] == "TAKEAWAY"
+            assert ticket["items"][0]["options"] == ["Formaat: Groot"]
             for next_status in ("ACKNOWLEDGED", "PREPARING", "READY", "COLLECTED"):
                 ticket = _assert_success(
                     await client.post(
@@ -247,8 +313,12 @@ async def test_complete_http_sale_fulfillment_review_refund_and_reporting_workfl
             assert [receipt["receipt_type"] for receipt in sale_receipts_response.json()] == [
                 "SALE"
             ]
+            sale_document = sale_receipts_response.json()[0]["document"]
+            assert sale_document["order"]["fulfillment_type"] == "TAKEAWAY"
+            assert sale_document["amounts"]["packaging_fee_minor"] == 35
+            assert sale_document["items"][0]["options"][0]["name"] == "Groot"
 
-            review_order = await create_kiosk_order("review")
+            review_order = await create_kiosk_order("review", "DINE_IN", 425)
             async with database.session_factory() as session, session.begin():
                 station = await session.scalar(
                     select(KitchenStation).where(
@@ -322,6 +392,33 @@ async def test_complete_http_sale_fulfillment_review_refund_and_reporting_workfl
                 "REFUND",
             }
 
+            extra_value = _assert_success(
+                await client.post(
+                    f"/api/v1/admin/catalog/stores/{bootstrap.store_id}/option-groups/{option_group['id']}/values",
+                    headers=staff_headers,
+                    json={
+                        "code": "extra-groot",
+                        "translations": {"nl-NL": "Extra groot"},
+                        "sort_order": 20,
+                    },
+                ),
+                201,
+            )
+            _assert_success(
+                await client.patch(
+                    f"/api/v1/admin/catalog/stores/{bootstrap.store_id}/option-groups/{option_group['id']}",
+                    headers=staff_headers,
+                    json={"translations": {"nl-NL": "Bekerformaat"}, "sort_order": 5},
+                )
+            )
+            _assert_success(
+                await client.patch(
+                    f"/api/v1/admin/catalog/stores/{bootstrap.store_id}/option-groups/{option_group['id']}/values/{extra_value['id']}",
+                    headers=staff_headers,
+                    json={"active": False, "sort_order": 30},
+                )
+            )
+
             report_response = await client.get(
                 "/api/v1/admin/reports/sales",
                 headers=staff_headers,
@@ -333,8 +430,31 @@ async def test_complete_http_sale_fulfillment_review_refund_and_reporting_workfl
             )
             report = _assert_success(report_response)
             assert report["order_count"] == 2
-            assert report["paid_minor"] == 700
-            assert report["refunded_minor"] == 350
-            assert report["net_collected_minor"] == 350
+            assert report["paid_minor"] == 885
+            assert report["refunded_minor"] == 425
+            assert report["net_collected_minor"] == 460
+            _assert_success(
+                await client.patch(
+                    f"/api/v1/admin/catalog/stores/{bootstrap.store_id}/option-groups/{option_group['id']}/values/{option_value_id}",
+                    headers=staff_headers,
+                    json={"active": False},
+                )
+            )
+            inactive_quote = await client.post(
+                "/api/v1/kiosk/quotes",
+                headers=kiosk_headers,
+                json={
+                    "locale": "nl-NL",
+                    "fulfillment_type": "DINE_IN",
+                    "items": [
+                        {
+                            "product_id": product["id"],
+                            "quantity": 1,
+                            "option_value_ids": [option_value_id],
+                        }
+                    ],
+                },
+            )
+            assert inactive_quote.status_code == 409
     finally:
         await database.dispose()

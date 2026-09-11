@@ -52,6 +52,13 @@ export function ReceiptView({ receipt, language }: ReceiptViewProps) {
       {(stringValue(order.order_number) ?? stringValue(document.order_number)) && (
         <p>{language === 'zh-CN' ? '订单' : 'Bestelling'} {stringValue(order.order_number) ?? stringValue(document.order_number)}</p>
       )}
+      {stringValue(order.fulfillment_type) && (
+        <p>
+          <strong>
+            {stringValue(order.fulfillment_type) === 'TAKEAWAY' ? 'Meenemen' : 'Hier eten'}
+          </strong>
+        </p>
+      )}
 
       {items.length > 0 && (
         <ul className="receipt-lines">
@@ -59,6 +66,14 @@ export function ReceiptView({ receipt, language }: ReceiptViewProps) {
             <li key={`${String(item.line_number)}-${index}`}>
               <span>
                 {numberValue(item.quantity) ?? 1}× {stringValue(item.name) ?? (language === 'zh-CN' ? '商品' : 'Product')}
+                {Array.isArray(item.options) && item.options.length > 0 && (
+                  <small>
+                    {item.options
+                      .map(objectValue)
+                      .map((option) => `${stringValue(option.group_name) ?? ''}: ${stringValue(option.name) ?? ''}`)
+                      .join(', ')}
+                  </small>
+                )}
               </span>
               <strong>
                 {formatMoney(
@@ -70,6 +85,19 @@ export function ReceiptView({ receipt, language }: ReceiptViewProps) {
             </li>
           ))}
         </ul>
+      )}
+
+      {(numberValue(amounts.packaging_fee_minor) ?? 0) > 0 && (
+        <p className="receipt-fee">
+          <span>Verpakkingskosten</span>
+          <strong>
+            {formatMoney(
+              numberValue(amounts.packaging_fee_minor) ?? 0,
+              receipt.currency,
+              receipt.locale,
+            )}
+          </strong>
+        </p>
       )}
 
       {total !== null && (

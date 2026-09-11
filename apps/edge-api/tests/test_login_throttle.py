@@ -95,7 +95,7 @@ async def test_durable_login_throttle_locks_and_recovers_without_raw_identifiers
         assert "owner" not in throttle.principal_key
         throttle.locked_until = utc_now() - timedelta(seconds=1)
 
-    token, _ = await identity_service.authenticate(database, settings, correct_request, limiter)
+    token, _, _ = await identity_service.authenticate(database, settings, correct_request, limiter)
     assert token == "test-token"
     async with database.session_factory() as session:
         assert await session.scalar(select(func.count(LoginThrottle.principal_key))) == 0

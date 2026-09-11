@@ -2,25 +2,17 @@ import type { KitchenApiCredentials } from './api';
 
 const STORAGE_KEY = 'smart-drink:kds-session:v1';
 
-export interface StoredKitchenSession extends KitchenApiCredentials {
-  accessTokenExpiresAt: string;
-  tenantCode: string;
-  username: string;
-}
+export type StoredKitchenSession = KitchenApiCredentials;
 
 function isStoredKitchenSession(value: unknown): value is StoredKitchenSession {
   if (!value || typeof value !== 'object') {
     return false;
   }
-  const candidate = value as Partial<StoredKitchenSession>;
+  const candidate = value as Partial<KitchenApiCredentials>;
   return (
     typeof candidate.apiBaseUrl === 'string' &&
     typeof candidate.endpointId === 'string' &&
-    typeof candidate.endpointKey === 'string' &&
-    typeof candidate.accessToken === 'string' &&
-    typeof candidate.accessTokenExpiresAt === 'string' &&
-    typeof candidate.tenantCode === 'string' &&
-    typeof candidate.username === 'string'
+    typeof candidate.endpointKey === 'string'
   );
 }
 
@@ -32,10 +24,6 @@ export function readKitchenSession(): StoredKitchenSession | null {
   try {
     const parsed: unknown = JSON.parse(serialized);
     if (!isStoredKitchenSession(parsed)) {
-      clearKitchenSession();
-      return null;
-    }
-    if (Date.parse(parsed.accessTokenExpiresAt) <= Date.now()) {
       clearKitchenSession();
       return null;
     }

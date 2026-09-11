@@ -3,7 +3,15 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.enums import FulfillmentEndpointType, PaymentProvider
@@ -16,6 +24,8 @@ class Tenant(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    brand_name: Mapped[str | None] = mapped_column(String(200))
+    logo_url: Mapped[str | None] = mapped_column(String(1000))
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
@@ -48,6 +58,7 @@ class Store(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     code: Mapped[str] = mapped_column(String(40), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    city: Mapped[str | None] = mapped_column(String(120), index=True)
     country_code: Mapped[str] = mapped_column(String(2), nullable=False, default="NL")
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="EUR")
     locale: Mapped[str] = mapped_column(String(20), nullable=False, default="nl-NL")
@@ -62,6 +73,7 @@ class StoreOperatingPolicy(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("max_open_tickets > 0", name="max_open_tickets_positive"),
         CheckConstraint("kds_heartbeat_seconds > 0", name="heartbeat_seconds_positive"),
         CheckConstraint("version > 0", name="version_positive"),
+        CheckConstraint("takeaway_fee_minor >= 0", name="takeaway_fee_minor_nonnegative"),
     )
 
     store_id: Mapped[UUID] = mapped_column(ForeignKey("store.id"), unique=True, nullable=False)
@@ -69,6 +81,8 @@ class StoreOperatingPolicy(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     max_open_tickets: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
     kds_heartbeat_seconds: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     printer_fallback_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    takeaway_fee_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    takeaway_fee_minor: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
 
@@ -95,6 +109,7 @@ class KitchenStation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     store_id: Mapped[UUID] = mapped_column(ForeignKey("store.id"), index=True, nullable=False)
     code: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    display_title: Mapped[str | None] = mapped_column(String(120))
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)

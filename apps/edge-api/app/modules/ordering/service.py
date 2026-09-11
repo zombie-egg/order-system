@@ -254,6 +254,36 @@ async def _validate_quote_snapshot(session: AsyncSession, quote: PriceQuote) -> 
             )
         ).all()
     }
+    fee_net = 0
+    fee_tax = 0
+    fee_total = 0
+    if quote.packaging_fee_minor:
+        first_item = await session.scalar(
+            select(PriceQuoteItem)
+            .where(PriceQuoteItem.quote_id == quote.id)
+            .order_by(PriceQuoteItem.line_number)
+        )
+        if first_item is not None:
+            key = (first_item.tax_category_code, first_item.tax_rate_ppm)
+            denominator = (
+                1_000_000 + first_item.tax_rate_ppm
+                if quote.prices_include_tax
+                else 1_000_000
+            )
+            fee_tax_numerator = quote.packaging_fee_minor * first_item.tax_rate_ppm
+            fee_tax = (fee_tax_numerator + denominator // 2) // denominator
+            fee_net = (
+                quote.packaging_fee_minor - fee_tax
+                if quote.prices_include_tax
+                else quote.packaging_fee_minor
+            )
+            fee_total = (
+                quote.packaging_fee_minor
+                if quote.prices_include_tax
+                else quote.packaging_fee_minor + fee_tax
+            )
+            prior_net, prior_tax = item_tax_breakdown.get(key, (0, 0))
+            item_tax_breakdown[key] = (prior_net + fee_net, prior_tax + fee_tax)
     tax_line_breakdown = {
         (line.tax_category_code, line.tax_rate_ppm): (line.taxable_minor, line.tax_minor)
         for line in (
@@ -285,14 +315,14 @@ async def _validate_quote_snapshot(session: AsyncSession, quote: PriceQuote) -> 
         or (
             subtotal,
             discount,
-            net,
-            tax,
-            total,
+            net + fee_net,
+            tax + fee_tax,
+            total + fee_total,
             taxable_total,
             tax_line_total,
         )
         != (
-            quote.subtotal_minor,
+            quote.subtotal_minor - quote.packaging_fee_minor,
             quote.discount_minor,
             quote.net_minor,
             quote.tax_minor,
@@ -309,6 +339,9 @@ async def _validate_quote_snapshot(session: AsyncSession, quote: PriceQuote) -> 
                 int(invalid_discount_item_count or 0) > 0,
                 quote.schema_version != 1,
                 quote.snapshot.get("schema_version") != 1,
+                quote.snapshot.get("fulfillment_type", quote.fulfillment_type.value)
+                != quote.fulfillment_type.value,
+                quote.snapshot.get("packaging_fee_minor", 0) != quote.packaging_fee_minor,
             )
         )
     ):
@@ -423,6 +456,8 @@ async def create_order(
         currency=quote.currency,
         locale=quote.locale,
         prices_include_tax=quote.prices_include_tax,
+        fulfillment_type=quote.fulfillment_type,
+        packaging_fee_minor=quote.packaging_fee_minor,
         subtotal_minor=quote.subtotal_minor,
         discount_minor=quote.discount_minor,
         net_minor=quote.net_minor,
@@ -841,6 +876,8 @@ async def build_order_response(session: AsyncSession, order: SalesOrder) -> Orde
         currency=order.currency,
         locale=order.locale,
         prices_include_tax=order.prices_include_tax,
+        fulfillment_type=order.fulfillment_type,
+        packaging_fee_minor=order.packaging_fee_minor,
         subtotal_minor=order.subtotal_minor,
         discount_minor=order.discount_minor,
         net_minor=order.net_minor,

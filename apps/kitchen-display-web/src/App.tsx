@@ -1,7 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ApiError,
-  createAccessToken,
   heartbeat,
   listTickets,
   normalizeApiBaseUrl,
@@ -30,21 +29,21 @@ const AGE_WARNING_MS = 5 * 60_000;
 const AGE_CRITICAL_MS = 10 * 60_000;
 
 const STATUS_LABELS: Record<FulfillmentStatus, string> = {
-  NOT_RELEASED: '未发布', QUEUED: '新订单', ACKNOWLEDGED: '已接单', PREPARING: '制作中',
-  READY: '待取餐', COLLECTED: '已取餐', ON_HOLD: '已暂停', UNFULFILLABLE: '无法制作', CANCELLED: '已取消',
+  NOT_RELEASED: 'Niet vrijgegeven', QUEUED: 'Nieuwe bestelling', ACKNOWLEDGED: 'Geaccepteerd', PREPARING: 'In bereiding',
+  READY: 'Klaar om af te halen', COLLECTED: 'Afgehaald', ON_HOLD: 'Gepauzeerd', UNFULFILLABLE: 'Niet te bereiden', CANCELLED: 'Geannuleerd',
 };
 
 const FAILURE_REASONS: ReadonlyArray<{ value: FulfillmentFailureReason; label: string }> = [
-  { value: 'OUT_OF_STOCK', label: '原料或商品缺货' },
-  { value: 'STAFF_CAPACITY', label: '人员不足，无法制作' },
+  { value: 'OUT_OF_STOCK', label: 'Ingrediënt of product niet op voorraad' },
+  { value: 'STAFF_CAPACITY', label: 'Onvoldoende personeel' },
   {
     value: 'MANUAL_WORKSTATION_EQUIPMENT_FAILURE',
-    label: '人工制作工位或设备故障',
+    label: 'Storing bij werkstation of apparatuur',
   },
-  { value: 'ORDER_ERROR', label: '订单信息有误' },
-  { value: 'ALLERGEN_OR_RECIPE_ISSUE', label: '过敏原或配方问题' },
-  { value: 'STORE_CLOSING', label: '门店即将打烊' },
-  { value: 'OTHER', label: '其他运营原因' },
+  { value: 'ORDER_ERROR', label: 'Fout in de bestelling' },
+  { value: 'ALLERGEN_OR_RECIPE_ISSUE', label: 'Probleem met allergenen of recept' },
+  { value: 'STORE_CLOSING', label: 'Vestiging sluit binnenkort' },
+  { value: 'OTHER', label: 'Andere operationele reden' },
 ];
 
 const ALLOWED_TRANSITIONS: Partial<Record<FulfillmentStatus, FulfillmentStatus[]>> = {
@@ -64,7 +63,7 @@ const PRIMARY_TRANSITION: Partial<Record<FulfillmentStatus, FulfillmentStatus>> 
 };
 
 const ACTION_LABELS: Partial<Record<FulfillmentStatus, string>> = {
-  ACKNOWLEDGED: '接受订单', PREPARING: '开始制作', READY: '标记完成', COLLECTED: '标记已取餐', ON_HOLD: '暂停订单',
+  ACKNOWLEDGED: 'Bestelling accepteren', PREPARING: 'Bereiding starten', READY: 'Markeren als klaar', COLLECTED: 'Markeren als afgehaald', ON_HOLD: 'Bestelling pauzeren',
 };
 
 type TicketAgeLevel = 'fresh' | 'warning' | 'critical';
@@ -80,9 +79,6 @@ interface ConnectionFormState {
   apiBaseUrl: string;
   endpointId: string;
   endpointKey: string;
-  tenantCode: string;
-  username: string;
-  password: string;
 }
 
 interface FailureDialogState {
@@ -97,27 +93,24 @@ function initialConnectionForm(session: StoredKitchenSession | null): Connection
     apiBaseUrl: session?.apiBaseUrl ?? DEFAULT_API_BASE_URL,
     endpointId: session?.endpointId ?? '',
     endpointKey: session?.endpointKey ?? '',
-    tenantCode: session?.tenantCode ?? '',
-    username: session?.username ?? '',
-    password: '',
   };
 }
 
 function formatError(error: unknown): string {
   if (!(error instanceof ApiError)) {
-    return error instanceof Error ? error.message : '发生未知错误。';
+    return error instanceof Error ? error.message : 'Er is een onbekende fout opgetreden.';
   }
 
-  const suffix = error.correlationId ? ` 参考编号：${error.correlationId}。` : '';
+  const suffix = error.correlationId ? ` Referentienummer: ${error.correlationId}.` : '';
   switch (error.status) {
     case 401:
-      return `员工登录会话或工位凭据无效或已过期。${suffix}`;
+      return `De werkstationgegevens zijn ongeldig of verlopen. Controleer de werkstation-ID en werkstationsleutel.${suffix}`;
     case 403:
-      return `该员工账号无权操作制作队列。${suffix}`;
+      return `Dit werkstation heeft geen toegang tot de bereidingswachtrij.${suffix}`;
     case 409:
-      return `此订单已在其他看板更新，队列已刷新。${suffix}`;
+      return `Deze bestelling is op een ander scherm bijgewerkt. De wachtrij is vernieuwd.${suffix}`;
     case 422:
-      return `状态更新因数据无效而被拒绝。${suffix}`;
+      return `De statuswijziging is geweigerd vanwege ongeldige gegevens.${suffix}`;
     default:
       return `${error.message}${suffix}`;
   }
@@ -184,7 +177,7 @@ function ticketAgePresentation(
   const start = stageTimestamp ?? observedAt;
   const elapsed = Math.max(0, now - start);
   const roundedMinutes = Math.floor(elapsed / 60_000);
-  const shortLabel = roundedMinutes < 1 ? '刚到' : `${roundedMinutes} 分钟`;
+  const shortLabel = roundedMinutes < 1 ? 'Zojuist' : `${roundedMinutes} min`;
   const level: TicketAgeLevel =
     elapsed >= AGE_CRITICAL_MS ? 'critical' : elapsed >= AGE_WARNING_MS ? 'warning' : 'fresh';
 
@@ -192,38 +185,38 @@ function ticketAgePresentation(
     return {
       accessibleLabel:
         roundedMinutes < 1
-          ? '刚刚显示在此看板'
-          : `已显示在此看板 ${roundedMinutes} 分钟`,
+          ? 'Zojuist op dit scherm verschenen'
+          : `${roundedMinutes} minuten op dit scherm`,
       level,
       shortLabel,
-      title: '从此看板首次收到该订单时开始计算。',
+      title: 'Gemeten vanaf het moment dat dit scherm de bestelling ontving.',
     };
   }
 
   const stageLabel: Partial<Record<FulfillmentStatus, string>> = {
-    ACKNOWLEDGED: '已接单',
-    PREPARING: '制作中',
-    ON_HOLD: '当前流程中',
-    READY: '待取餐',
+    ACKNOWLEDGED: 'Geaccepteerd',
+    PREPARING: 'In bereiding',
+    ON_HOLD: 'In deze fase',
+    READY: 'Klaar om af te halen',
   };
-  const label = stageLabel[ticket.status] ?? '当前阶段';
+  const label = stageLabel[ticket.status] ?? 'Huidige fase';
   return {
     accessibleLabel:
       roundedMinutes < 1
-        ? `${label} 不到一分钟`
-        : `${label} 已 ${roundedMinutes} 分钟`,
+        ? `${label}, minder dan één minuut`
+        : `${label}, ${roundedMinutes} minuten`,
     level,
     shortLabel,
-    title: '从服务器记录的当前制作阶段时间开始计算。',
+    title: 'Gemeten vanaf de door de server geregistreerde start van deze fase.',
   };
 }
 
 function transitionLabel(ticket: FulfillmentTicket, status: FulfillmentStatus): string {
   if (ticket.status === 'ON_HOLD' && status === 'PREPARING') {
-    return '继续制作';
+    return 'Bereiding hervatten';
   }
   if (ticket.status === 'ON_HOLD' && status === 'ACKNOWLEDGED') {
-    return '恢复为已接单';
+    return 'Terug naar geaccepteerd';
   }
   return ACTION_LABELS[status] ?? STATUS_LABELS[status];
 }
@@ -250,32 +243,20 @@ function ConnectionScreen({
       const endpointId = form.endpointId.trim();
       const endpointKey = form.endpointKey.trim();
       if (!endpointId || !endpointKey) {
-        throw new Error('请填写工位 ID 和工位密钥。');
+        throw new Error('Vul de werkstation-ID en werkstationsleutel in.');
       }
 
-      const token = await createAccessToken(apiBaseUrl, {
-        tenant_code: form.tenantCode.trim(),
-        username: form.username.trim(),
-        password: form.password,
-      });
       const credentials: KitchenApiCredentials = {
         apiBaseUrl,
         endpointId,
         endpointKey,
-        accessToken: token.access_token,
       };
 
       await heartbeat(credentials);
       await listTickets(credentials);
 
-      const session: StoredKitchenSession = {
-        ...credentials,
-        accessTokenExpiresAt: token.expires_at,
-        tenantCode: form.tenantCode.trim(),
-        username: form.username.trim(),
-      };
-      writeKitchenSession(session);
-      onConnected(session);
+      writeKitchenSession(credentials);
+      onConnected(credentials);
     } catch (caught) {
       setError(formatError(caught));
     } finally {
@@ -295,18 +276,18 @@ function ConnectionScreen({
             <span className="brand-mark brand-mark-large" aria-hidden="true">
               SD
             </span>
-            <span>SipPilot · 饮航</span>
+            <span>SipPilot</span>
           </div>
           <div>
-            <p className="eyebrow">门店边缘服务 · 人工制作</p>
-          <h1 id="connection-title">连接制作看板</h1>
+            <p className="eyebrow">Vestigingsservice · Handmatige bereiding</p>
+          <h1 id="connection-title">Bereidingsscherm verbinden</h1>
             <p className="supporting-text">
-              登录制作员工账号，并将此看板连接至已配置的制作工位。
+              Verbind dit scherm met een ingericht werkstation via de werkstation-ID en werkstationsleutel.
             </p>
           </div>
           <div className="provisioning-note">
-            <strong>开始营业前</strong>
-            <span>请确认 Edge API 正在运行，且此工位已启用。</span>
+            <strong>Voor opening</strong>
+            <span>Controleer of de Edge API actief is en dit werkstation is ingeschakeld.</span>
           </div>
         </aside>
 
@@ -319,7 +300,7 @@ function ConnectionScreen({
 
           <form className="connection-form" onSubmit={(event) => void submit(event)}>
             <label>
-              Edge API 地址
+              Edge API-adres
               <input
                 type="url"
                 required
@@ -332,7 +313,7 @@ function ConnectionScreen({
 
             <div className="form-grid">
               <label>
-              工位 ID
+              Werkstation-ID
                 <input
                   required
                   autoComplete="off"
@@ -343,7 +324,7 @@ function ConnectionScreen({
                 />
               </label>
               <label>
-              工位密钥
+              Werkstationsleutel
                 <input
                   type="password"
                   required
@@ -354,51 +335,18 @@ function ConnectionScreen({
               </label>
             </div>
 
-            <div className="form-grid">
-              <label>
-              租户代码
-                <input
-                  required
-                  autoCapitalize="none"
-                  autoComplete="organization"
-                  value={form.tenantCode}
-                  onChange={(event) => updateField('tenantCode', event.target.value)}
-                />
-              </label>
-              <label>
-              用户名
-                <input
-                  required
-                  autoCapitalize="none"
-                  autoComplete="username"
-                  value={form.username}
-                  onChange={(event) => updateField('username', event.target.value)}
-                />
-              </label>
-            </div>
-
-            <label>
-              密码
-              <input
-                type="password"
-                required
-                autoComplete="current-password"
-                value={form.password}
-                onChange={(event) => updateField('password', event.target.value)}
-              />
-            </label>
 
             <button
               className="button button-primary connect-button"
               type="submit"
               disabled={submitting}
             >
-              {submitting ? '正在验证…' : '连接看板'}
+              {submitting ? 'Controleren…' : 'Scherm verbinden'}
             </button>
           </form>
 
           <p className="security-note">
-            当前版本仅在本浏览器标签中保存工位密钥和短期员工令牌。生产环境应通过受管设备安全注入密钥。
+            De werkstationsleutel wordt alleen in dit browsertabblad bewaard. Gebruik op beheerde productieapparaten een veilige sleutelvoorziening.
           </p>
         </div>
       </section>
@@ -441,20 +389,23 @@ function TicketCard({
     >
       {busy ? (
         <span className="sr-only" role="status">
-          正在更新订单 {ticket.display_number}
+          Bestelling {ticket.display_number} wordt bijgewerkt
         </span>
       ) : null}
       <header className="ticket-header">
         <div>
           <div className="ticket-flags">
-            {priority ? <span className="priority-badge">优先级 {ticket.priority}</span> : null}
+            {priority ? <span className="priority-badge">Prioriteit {ticket.priority}</span> : null}
             {ticket.generation_number > 1 ? (
-              <span className="remake-badge">重做第 {ticket.generation_number} 次</span>
+              <span className="remake-badge">Herbereiding {ticket.generation_number}</span>
             ) : null}
           </div>
           <p className="ticket-number" id={`ticket-${ticket.id}`}>
             #{ticket.display_number}
           </p>
+          <span className="fulfillment-badge">
+            {ticket.fulfillment_type === 'TAKEAWAY' ? 'Meenemen' : 'Hier eten'}
+          </span>
         </div>
         <div className="ticket-timing">
           <span className={`age-badge age-badge-${age.level}`} title={age.title}>
@@ -467,7 +418,7 @@ function TicketCard({
         </div>
       </header>
 
-      <ul className="ticket-items" aria-label={`订单 ${ticket.display_number} 的商品`}>
+      <ul className="ticket-items" aria-label={`Producten van bestelling ${ticket.display_number}`}>
         {ticket.items.map((item) => {
           const preparation = snapshotValues(item.preparation_snapshot);
           const allergens = snapshotValues(item.allergen_snapshot);
@@ -477,15 +428,18 @@ function TicketCard({
                 <span className="quantity">{item.quantity}×</span>
                 <strong>{item.name}</strong>
               </div>
+              {item.options && item.options.length > 0 ? (
+                <p className="item-options">{item.options.join(' · ')}</p>
+              ) : null}
               {preparation.length > 0 ? (
-                <ul className="item-notes" aria-label="制作要求">
+                <ul className="item-notes" aria-label="Bereidingsinstructies">
                   {preparation.map((note) => (
                     <li key={note}>{note}</li>
                   ))}
                 </ul>
               ) : null}
               {allergens.length > 0 ? (
-                <p className="allergen-note">过敏原信息：{allergens.join('；')}</p>
+                <p className="allergen-note">Allergenen: {allergens.join('; ')}</p>
               ) : null}
             </li>
           );
@@ -506,7 +460,7 @@ function TicketCard({
             disabled={busy || offline}
             onClick={() => onTransition(ticket, primaryTransition)}
           >
-            {busy ? '正在更新…' : transitionLabel(ticket, primaryTransition)}
+            {busy ? 'Bijwerken…' : transitionLabel(ticket, primaryTransition)}
           </button>
         ) : null}
         {secondaryTransitions.map((status) => (
@@ -527,7 +481,7 @@ function TicketCard({
             disabled={busy || offline}
             onClick={() => onTransition(ticket, 'UNFULFILLABLE')}
           >
-            无法制作
+            Niet te bereiden
           </button>
         ) : null}
       </footer>
@@ -600,10 +554,10 @@ function FailureDialog({
     <div className="dialog-backdrop">
       <section className="dialog" role="dialog" aria-modal="true" aria-labelledby="failure-title">
         <div className="dialog-heading">
-          <p className="dialog-kicker">需要人工审核</p>
-          <h2 id="failure-title">订单 #{state.ticket.display_number} 无法制作</h2>
+          <p className="dialog-kicker">Handmatige controle vereist</p>
+          <h2 id="failure-title">Bestelling #{state.ticket.display_number} kan niet worden bereid</h2>
           <p>
-            此操作会立即从制作队列移除该订单，并创建一条人工审核记录。
+            Hiermee wordt de bestelling direct uit de bereidingswachtrij verwijderd en voor handmatige controle vastgelegd.
           </p>
         </div>
         {state.validationError ? (
@@ -613,11 +567,11 @@ function FailureDialog({
         ) : null}
         {offline ? (
           <div className="alert alert-warning" role="alert">
-            看板当前离线，请恢复连接后再确认此操作。
+            Het scherm is offline. Herstel de verbinding voordat u deze actie bevestigt.
           </div>
         ) : null}
         <label htmlFor="failure-reason">
-          运营原因
+          Operationele reden
           <select
             id="failure-reason"
             ref={reasonRef}
@@ -631,7 +585,7 @@ function FailureDialog({
               })
             }
           >
-            <option value="">请选择原因</option>
+            <option value="">Kies een reden</option>
             {FAILURE_REASONS.map((reason) => (
               <option value={reason.value} key={reason.value}>
                 {reason.label}
@@ -640,19 +594,19 @@ function FailureDialog({
           </select>
         </label>
         <label htmlFor="failure-detail">
-          审核说明
+          Toelichting
           <textarea
             id="failure-detail"
             required
             maxLength={1000}
             rows={4}
-            placeholder="说明员工已检查的内容，以及该已支付订单无法制作的原因。请勿填写银行卡信息。"
+            placeholder="Beschrijf wat is gecontroleerd en waarom deze betaalde bestelling niet kan worden bereid. Vermeld geen betaalkaartgegevens."
             value={state.detail}
             onChange={(event) =>
               onChange({ ...state, detail: event.target.value, validationError: null })
             }
           />
-          <span className="field-help">必填 · {state.detail.length}/1000 个字符</span>
+          <span className="field-help">Verplicht · {state.detail.length}/1000 tekens</span>
         </label>
         <div className="dialog-actions">
           <button
@@ -661,7 +615,7 @@ function FailureDialog({
             disabled={busy}
             onClick={onCancel}
           >
-            取消
+            Annuleren
           </button>
           <button
             className="button button-danger"
@@ -669,7 +623,7 @@ function FailureDialog({
             disabled={busy || offline}
             onClick={onSubmit}
           >
-            {busy ? '正在提交…' : '确认无法制作'}
+            {busy ? 'Verzenden…' : 'Bevestigen als niet te bereiden'}
           </button>
         </div>
       </section>
@@ -855,7 +809,7 @@ function QueueScreen({
     if (!failureDialog.reason || !detail) {
       setFailureDialog({
         ...failureDialog,
-        validationError: '请选择运营原因并填写审核说明。',
+        validationError: 'Kies een operationele reden en vul een toelichting in.',
       });
       return;
     }
@@ -870,9 +824,9 @@ function QueueScreen({
       statuses: FulfillmentStatus[];
       tickets: FulfillmentTicket[];
     }> = [
-      { title: '新订单', statuses: ['QUEUED', 'ACKNOWLEDGED'], tickets: [] },
-      { title: '制作中', statuses: ['PREPARING', 'ON_HOLD'], tickets: [] },
-      { title: '待取餐', statuses: ['READY'], tickets: [] },
+      { title: 'Nieuwe bestellingen', statuses: ['QUEUED', 'ACKNOWLEDGED'], tickets: [] },
+      { title: 'In bereiding', statuses: ['PREPARING', 'ON_HOLD'], tickets: [] },
+      { title: 'Klaar om af te halen', statuses: ['READY'], tickets: [] },
     ];
     for (const ticket of tickets) {
       groups.find((group) => group.statuses.includes(ticket.status))?.tickets.push(ticket);
@@ -900,17 +854,17 @@ function QueueScreen({
             SD
           </span>
           <div>
-            <p className="eyebrow">人工制作工位</p>
-            <h1>制作看板</h1>
+            <p className="eyebrow">Werkstation voor handmatige bereiding</p>
+            <h1>Bereidingsscherm</h1>
           </div>
         </div>
         <div className="header-actions">
           <div className={`connection-status ${online ? 'is-online' : 'is-offline'}`}>
             <span className={`status-dot ${online ? 'online' : 'offline'}`} aria-hidden="true" />
             <span>
-              <strong aria-live="polite">{online ? '已连接' : '离线'}</strong>
+              <strong aria-live="polite">{online ? 'Verbonden' : 'Offline'}</strong>
               {lastHeartbeatAt ? (
-                <small>心跳 {lastHeartbeatAt.toLocaleTimeString()}</small>
+                <small>Heartbeat {lastHeartbeatAt.toLocaleTimeString('nl-NL')}</small>
               ) : null}
             </span>
           </div>
@@ -920,17 +874,17 @@ function QueueScreen({
             disabled={refreshing || !online}
             onClick={() => void refreshQueue(true)}
           >
-            {refreshing ? '正在刷新…' : '刷新队列'}
+            {refreshing ? 'Vernieuwen…' : 'Wachtrij vernieuwen'}
           </button>
           <button className="button button-quiet" type="button" onClick={() => onDisconnect()}>
-            断开连接
+            Verbinding verbreken
           </button>
         </div>
       </header>
 
       {!online ? (
         <div className="alert alert-warning" role="alert">
-          看板当前离线。请恢复与 API 的连接后再操作订单。
+          Het scherm is offline. Herstel de API-verbinding voordat u bestellingen verwerkt.
         </div>
       ) : null}
       {globalError ? (
@@ -942,7 +896,7 @@ function QueueScreen({
             disabled={!online || refreshing}
             onClick={() => void refreshQueue(true)}
           >
-            重试
+            Opnieuw proberen
           </button>
         </div>
       ) : null}
@@ -951,38 +905,38 @@ function QueueScreen({
         <div className="summary-metrics" aria-live="polite" aria-atomic="true">
           <span className="summary-metric">
             <strong>{tickets.length}</strong>
-            <span>处理中</span>
+            <span>Actief</span>
           </span>
           <span
             className={`summary-metric summary-priority${priorityTicketCount ? ' has-priority' : ''}`}
           >
             <strong>{priorityTicketCount}</strong>
-            <span>优先</span>
+            <span>Prioriteit</span>
           </span>
         </div>
         <span className="last-updated">
           {lastUpdatedAt
-            ? `更新于 ${lastUpdatedAt.toLocaleTimeString()}`
-            : '等待首次更新'}
+            ? `Bijgewerkt om ${lastUpdatedAt.toLocaleTimeString('nl-NL')}`
+            : 'Wachten op eerste update'}
         </span>
       </div>
 
       {loading ? (
         <section className="empty-state" aria-busy="true">
-          <h2>正在加载制作队列…</h2>
-          <p>正在检查该工位的已支付订单。</p>
+          <h2>Bereidingswachtrij laden…</h2>
+          <p>Betaalde bestellingen voor dit werkstation worden opgehaald.</p>
         </section>
       ) : tickets.length === 0 && !online ? (
         <section className="empty-state empty-state-offline">
-          <h2>离线时无法查看队列</h2>
+          <h2>Wachtrij niet beschikbaar terwijl u offline bent</h2>
           <p>
-            请将此 Windows 看板重新连接至 Edge API。连接恢复后，订单会自动加载。
+            Verbind dit scherm opnieuw met de Edge API. Na herstel worden bestellingen automatisch geladen.
           </p>
         </section>
       ) : tickets.length === 0 ? (
         <section className="empty-state">
-          <h2>暂无待制作订单</h2>
-          <p>有已支付订单到达此工位时，页面会自动刷新。</p>
+          <h2>Geen bestellingen om te bereiden</h2>
+          <p>Het scherm wordt automatisch vernieuwd zodra een betaalde bestelling binnenkomt.</p>
         </section>
       ) : (
         <div className="queue-grid">
@@ -997,7 +951,7 @@ function QueueScreen({
               >
                 <header className="column-header">
                   <h2 id={`column-${columnStatus}`}>{group.title}</h2>
-                  <span aria-label={`${group.tickets.length} 个订单`}>{group.tickets.length}</span>
+                  <span aria-label={`${group.tickets.length} bestellingen`}>{group.tickets.length}</span>
                 </header>
                 {group.tickets.length > 0 ? (
                   <div className="ticket-stack">
@@ -1015,7 +969,7 @@ function QueueScreen({
                     ))}
                   </div>
                 ) : (
-                  <p className="column-empty">此阶段暂无订单</p>
+                  <p className="column-empty">Geen bestellingen in deze fase</p>
                 )}
               </section>
             );

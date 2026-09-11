@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.*.example
 
 # Python
 .venv/
@@ -42,3 +43,6 @@ Desktop.ini
 .cache/
 tmp/
 temp/
+
+# Generated TLS material for the single-host deployment
+deploy/tls/

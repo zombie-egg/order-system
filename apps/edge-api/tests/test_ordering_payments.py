@@ -1116,12 +1116,6 @@ async def test_fulfillment_heartbeat_and_state_version_are_authoritative(
         endpoint_id=seed.endpoint_id,
         station_id=seed.station_id,
     )
-    principal = Principal(
-        user_id=seed.user_id,
-        tenant_id=seed.tenant_id,
-        permissions=frozenset({"kitchen:operate"}),
-        store_ids=frozenset({seed.store_id}),
-    )
 
     async with database.session_factory() as session, session.begin():
         endpoint_id, station_id, heartbeat_at, version = await heartbeat_endpoint(
@@ -1142,7 +1136,6 @@ async def test_fulfillment_heartbeat_and_state_version_are_authoritative(
             await transition_ticket(
                 session,
                 endpoint_principal,
-                principal,
                 ticket_id=ticket.id,
                 to_status=FulfillmentStatus.ACKNOWLEDGED,
                 expected_version=ticket.version + 1,
@@ -1157,7 +1150,6 @@ async def test_fulfillment_heartbeat_and_state_version_are_authoritative(
         acknowledged = await transition_ticket(
             session,
             endpoint_principal,
-            principal,
             ticket_id=ticket.id,
             to_status=FulfillmentStatus.ACKNOWLEDGED,
             expected_version=ticket.version,
@@ -1168,7 +1160,6 @@ async def test_fulfillment_heartbeat_and_state_version_are_authoritative(
             await transition_ticket(
                 session,
                 endpoint_principal,
-                principal,
                 ticket_id=ticket.id,
                 to_status=FulfillmentStatus.COLLECTED,
                 expected_version=acknowledged.version,
@@ -1240,21 +1231,14 @@ async def test_fulfillment_hides_and_rejects_cross_store_ticket_corruption(
         endpoint_id=other_endpoint_id,
         station_id=other_station_id,
     )
-    principal = Principal(
-        user_id=seed.user_id,
-        tenant_id=seed.tenant_id,
-        permissions=frozenset({"kitchen:operate"}),
-        store_ids=frozenset({other_store_id}),
-    )
     async with database.session_factory() as session, session.begin():
-        assert await list_station_queue(session, endpoint_principal, principal) == []
+        assert await list_station_queue(session, endpoint_principal) == []
         ticket = await session.scalar(select(FulfillmentTicket))
         assert ticket is not None
         with pytest.raises(ConflictError) as mismatch:
             await transition_ticket(
                 session,
                 endpoint_principal,
-                principal,
                 ticket_id=ticket.id,
                 to_status=FulfillmentStatus.ACKNOWLEDGED,
                 expected_version=ticket.version,
@@ -1386,12 +1370,6 @@ async def test_unfulfillable_paid_order_opens_review_without_automatic_refund(
     async with database.session_factory() as session:
         ticket = await session.scalar(select(FulfillmentTicket))
     assert ticket is not None
-    principal = Principal(
-        user_id=seed.user_id,
-        tenant_id=seed.tenant_id,
-        permissions=frozenset({"kitchen:operate"}),
-        store_ids=frozenset({seed.store_id}),
-    )
     endpoint = FulfillmentEndpointPrincipal(
         endpoint_id=seed.endpoint_id,
         station_id=seed.station_id,
@@ -1400,7 +1378,6 @@ async def test_unfulfillable_paid_order_opens_review_without_automatic_refund(
         transitioned = await transition_ticket(
             session,
             endpoint,
-            principal,
             ticket_id=ticket.id,
             to_status=FulfillmentStatus.UNFULFILLABLE,
             expected_version=ticket.version,
@@ -1917,7 +1894,6 @@ async def test_successful_review_refund_closes_the_terminal_order(
         await transition_ticket(
             session,
             endpoint,
-            principal,
             ticket_id=ticket.id,
             to_status=FulfillmentStatus.UNFULFILLABLE,
             expected_version=ticket.version,

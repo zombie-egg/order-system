@@ -16,7 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.enums import PromotionType, QuoteStatus
+from app.core.enums import FulfillmentType, PromotionType, QuoteStatus
 from app.persistence.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.persistence.types import UtcDateTime, string_enum
 
@@ -87,6 +87,7 @@ class PriceQuote(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("net_minor >= 0", name="net_minor_nonnegative"),
         CheckConstraint("tax_minor >= 0", name="tax_minor_nonnegative"),
         CheckConstraint("total_minor >= 0", name="total_minor_nonnegative"),
+        CheckConstraint("packaging_fee_minor >= 0", name="packaging_fee_minor_nonnegative"),
         CheckConstraint(
             "(prices_include_tax AND subtotal_minor - discount_minor = total_minor) "
             "OR ((NOT prices_include_tax) AND "
@@ -119,6 +120,12 @@ class PriceQuote(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     locale: Mapped[str] = mapped_column(String(20), nullable=False)
     prices_include_tax: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    fulfillment_type: Mapped[FulfillmentType] = mapped_column(
+        string_enum(FulfillmentType, name="quote_fulfillment_type"),
+        default=FulfillmentType.DINE_IN,
+        nullable=False,
+    )
+    packaging_fee_minor: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     subtotal_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     discount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     net_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)

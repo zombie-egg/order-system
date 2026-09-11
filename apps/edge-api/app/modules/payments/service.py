@@ -415,6 +415,7 @@ async def _confirm_paid_order(
                 "order_id": str(order.id),
                 "item_count": len(order_items),
                 "release_issue": release_issue,
+                "fulfillment_type": order.fulfillment_type.value,
             },
             failure_reason_code=(
                 FulfillmentFailureReason.MANUAL_WORKSTATION_EQUIPMENT_FAILURE

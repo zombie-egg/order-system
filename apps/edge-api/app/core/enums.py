@@ -27,6 +27,11 @@ class QuoteStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class FulfillmentType(StrEnum):
+    DINE_IN = "DINE_IN"
+    TAKEAWAY = "TAKEAWAY"
+
+
 class OrderStatus(StrEnum):
     DRAFT = "DRAFT"
     CONFIRMED = "CONFIRMED"
@@ -131,6 +136,17 @@ class PriceBookStatus(StrEnum):
     DRAFT = "DRAFT"
     PUBLISHED = "PUBLISHED"
     ARCHIVED = "ARCHIVED"
+
+
+class ProductStatus(StrEnum):
+    """Publication state of a catalog product.
+
+    A draft is editable but never reaches the customer terminal, which lets an
+    administrator prepare a product—or a duplicate of one—before it goes live.
+    """
+
+    DRAFT = "DRAFT"
+    PUBLISHED = "PUBLISHED"
 
 
 class MockPaymentScenario(StrEnum):

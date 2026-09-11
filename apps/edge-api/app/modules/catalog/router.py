@@ -9,26 +9,46 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, Query, Request, status
 
 from app.api.dependencies import KioskDependency, Principal, SessionDependency, require_permission
-from app.core.errors import DomainError
 from app.core.enums import PermissionCode
+from app.core.errors import DomainError
 from app.modules.catalog.schemas import (
+    AdminCategoryResponse,
+    AdminOptionGroupResponse,
+    AdminProductListResponse,
     CreateCategoryRequest,
     CreateOptionGroupRequest,
+    CreateOptionValueInput,
     CreatePriceBookRequest,
     CreateProductRequest,
     ProductImageUploadRequest,
     ProductImageUploadResponse,
     ResourceCreatedResponse,
     SetProductAvailabilityRequest,
+    SetProductOptionPriceRequest,
+    SetProductPriceRequest,
     StoreCatalogResponse,
+    UpdateOptionGroupRequest,
+    UpdateOptionValueRequest,
+    UpdateProductRequest,
 )
 from app.modules.catalog.service import (
     create_category,
     create_option_group,
+    create_option_value,
     create_price_book,
     create_product,
+    delete_option_group,
+    delete_product,
     get_store_catalog,
+    list_admin_categories,
+    list_admin_option_groups,
+    list_admin_products,
     set_product_availability,
+    set_product_option_price,
+    set_product_price,
+    update_option_group,
+    update_option_value,
+    update_product,
 )
 
 router = APIRouter(tags=["catalog"])
@@ -36,9 +56,6 @@ admin_router = APIRouter(prefix="/admin/catalog", tags=["admin-catalog"])
 
 CatalogWritePrincipal = Annotated[
     Principal, Depends(require_permission(PermissionCode.CATALOG_WRITE.value))
-]
-CatalogTenantWritePrincipal = Annotated[
-    Principal, Depends(require_permission(PermissionCode.CATALOG_TENANT_WRITE.value))
 ]
 
 IMAGE_MIME_TYPES = {
@@ -71,7 +88,7 @@ async def get_catalog(
 async def post_category(
     request: CreateCategoryRequest,
     session: SessionDependency,
-    principal: CatalogTenantWritePrincipal,
+    principal: CatalogWritePrincipal,
 ) -> ResourceCreatedResponse:
     category = await create_category(session, principal, request)
     return ResourceCreatedResponse(id=category.id)
@@ -86,10 +103,87 @@ async def post_category(
 async def post_option_group(
     request: CreateOptionGroupRequest,
     session: SessionDependency,
-    principal: CatalogTenantWritePrincipal,
+    principal: CatalogWritePrincipal,
 ) -> ResourceCreatedResponse:
     group = await create_option_group(session, principal, request)
     return ResourceCreatedResponse(id=group.id)
+
+
+@admin_router.get(
+    "/stores/{store_id}/option-groups",
+    response_model=list[AdminOptionGroupResponse],
+    operation_id="list_admin_catalog_option_groups",
+)
+async def get_admin_option_groups(
+    store_id: UUID,
+    session: SessionDependency,
+    principal: CatalogWritePrincipal,
+) -> list[AdminOptionGroupResponse]:
+    return await list_admin_option_groups(session, principal, store_id)
+
+
+@admin_router.patch(
+    "/stores/{store_id}/option-groups/{group_id}",
+    response_model=ResourceCreatedResponse,
+    operation_id="update_catalog_option_group",
+)
+async def patch_option_group(
+    store_id: UUID,
+    group_id: UUID,
+    request: UpdateOptionGroupRequest,
+    session: SessionDependency,
+    principal: CatalogWritePrincipal,
+) -> ResourceCreatedResponse:
+    group = await update_option_group(session, principal, store_id, group_id, request)
+    return ResourceCreatedResponse(id=group.id)
+
+
+@admin_router.delete(
+    "/stores/{store_id}/option-groups/{group_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    operation_id="delete_catalog_option_group",
+)
+async def delete_admin_option_group(
+    store_id: UUID,
+    group_id: UUID,
+    session: SessionDependency,
+    principal: CatalogWritePrincipal,
+) -> None:
+    await delete_option_group(session, principal, store_id, group_id)
+
+
+@admin_router.post(
+    "/stores/{store_id}/option-groups/{group_id}/values",
+    response_model=ResourceCreatedResponse,
+    status_code=status.HTTP_201_CREATED,
+    operation_id="create_catalog_option_value",
+)
+async def post_option_value(
+    store_id: UUID,
+    group_id: UUID,
+    request: CreateOptionValueInput,
+    session: SessionDependency,
+    principal: CatalogWritePrincipal,
+) -> ResourceCreatedResponse:
+    value = await create_option_value(session, principal, store_id, group_id, request)
+    return ResourceCreatedResponse(id=value.id)
+
+
+@admin_router.patch(
+    "/stores/{store_id}/option-groups/{group_id}/values/{value_id}",
+    response_model=ResourceCreatedResponse,
+    operation_id="update_catalog_option_value",
+)
+async def patch_option_value(
+    store_id: UUID,
+    group_id: UUID,
+    value_id: UUID,
+    request: UpdateOptionValueRequest,
+    session: SessionDependency,
+    principal: CatalogWritePrincipal,
+) -> ResourceCreatedResponse:
+    value = await update_option_value(session, principal, store_id, group_id, value_id, request)
+    return ResourceCreatedResponse(id=value.id)
 
 
 @admin_router.post(
@@ -101,7 +195,7 @@ async def post_option_group(
 async def post_product(
     request: CreateProductRequest,
     session: SessionDependency,
-    principal: CatalogTenantWritePrincipal,
+    principal: CatalogWritePrincipal,
 ) -> ResourceCreatedResponse:
     product = await create_product(session, principal, request)
     return ResourceCreatedResponse(id=product.id)
@@ -116,7 +210,7 @@ async def post_product(
 async def upload_product_image(
     request: ProductImageUploadRequest,
     http_request: Request,
-    principal: CatalogTenantWritePrincipal,
+    principal: CatalogWritePrincipal,
 ) -> ProductImageUploadResponse:
     """Store a single admin-selected product image for use in a catalog card.
 
@@ -183,3 +277,93 @@ async def post_price_book(
 ) -> ResourceCreatedResponse:
     price_book = await create_price_book(session, principal, request)
     return ResourceCreatedResponse(id=price_book.id)
+
+
+@admin_router.get(
+    "/stores/{store_id}/products",
+    response_model=AdminProductListResponse,
+    operation_id="list_admin_catalog_products",
+)
+async def get_admin_products(
+    store_id: UUID,
+    session: SessionDependency,
+    principal: CatalogWritePrincipal,
+) -> AdminProductListResponse:
+    return await list_admin_products(session, principal, store_id)
+
+
+@admin_router.get(
+    "/stores/{store_id}/categories",
+    response_model=list[AdminCategoryResponse],
+    operation_id="list_admin_catalog_categories",
+)
+async def get_admin_categories(
+    store_id: UUID,
+    session: SessionDependency,
+    principal: CatalogWritePrincipal,
+) -> list[AdminCategoryResponse]:
+    return await list_admin_categories(session, principal, store_id)
+
+
+@admin_router.patch(
+    "/stores/{store_id}/products/{product_id}",
+    response_model=ResourceCreatedResponse,
+    operation_id="update_catalog_product",
+)
+async def patch_admin_product(
+    store_id: UUID,
+    product_id: UUID,
+    request: UpdateProductRequest,
+    session: SessionDependency,
+    principal: CatalogWritePrincipal,
+) -> ResourceCreatedResponse:
+    product = await update_product(session, principal, store_id, product_id, request)
+    return ResourceCreatedResponse(id=product.id)
+
+
+@admin_router.put(
+    "/stores/{store_id}/products/{product_id}/price",
+    response_model=ResourceCreatedResponse,
+    operation_id="set_catalog_product_price",
+)
+async def put_product_price(
+    store_id: UUID,
+    product_id: UUID,
+    request: SetProductPriceRequest,
+    session: SessionDependency,
+    principal: CatalogWritePrincipal,
+) -> ResourceCreatedResponse:
+    await set_product_price(session, principal, store_id, product_id, request)
+    return ResourceCreatedResponse(id=product_id)
+
+
+@admin_router.put(
+    "/stores/{store_id}/products/{product_id}/options/{value_id}/price",
+    response_model=ResourceCreatedResponse,
+    operation_id="set_catalog_product_option_price",
+)
+async def put_product_option_price(
+    store_id: UUID,
+    product_id: UUID,
+    value_id: UUID,
+    request: SetProductOptionPriceRequest,
+    session: SessionDependency,
+    principal: CatalogWritePrincipal,
+) -> ResourceCreatedResponse:
+    await set_product_option_price(session, principal, store_id, product_id, value_id, request)
+    return ResourceCreatedResponse(id=value_id)
+
+
+@admin_router.delete(
+    "/stores/{store_id}/products/{product_id}",
+    response_model=ResourceCreatedResponse,
+    operation_id="delete_catalog_product",
+)
+async def delete_admin_product(
+    store_id: UUID,
+    product_id: UUID,
+    session: SessionDependency,
+    principal: CatalogWritePrincipal,
+) -> ResourceCreatedResponse:
+    product = await delete_product(session, principal, store_id, product_id)
+    return ResourceCreatedResponse(id=product.id)

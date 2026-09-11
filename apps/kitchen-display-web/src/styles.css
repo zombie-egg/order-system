@@ -672,6 +672,23 @@ textarea {
   line-height: 1;
 }
 
+.fulfillment-badge {
+  display: inline-flex;
+  margin-top: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: #e6f5ee;
+  color: #116149;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.item-options {
+  margin: 0.35rem 0 0 2.25rem;
+  color: #315c50;
+  font-weight: 700;
+}
+
 .ticket-flags {
   display: flex;
   flex-wrap: wrap;
@@ -1166,3 +1183,178 @@ body,
 .button-primary { color: #fff; background: #202020; box-shadow: none; }
 .button-secondary, .button-quiet { color: #171717; background: #f0edf7; border-color: #bbb4cc; }
 .kinetic-menu-header > div > span { font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: .9rem; }
+
+/* Calm, high-clarity KDS theme shared with the admin application. */
+:root {
+  color: #17211d;
+  background: #f6f5f1;
+  --canvas: #f6f5f1;
+  --surface: #fff;
+  --surface-raised: #fff;
+  --line: #deded8;
+  --muted: #637069;
+  --text: #17211d;
+  --blue: #1e6649;
+  --blue-dark: #174f3a;
+  --green: #1e6649;
+}
+
+html {
+  color-scheme: light;
+}
+
+body,
+.connection-shell,
+.queue-shell {
+  color: #17211d;
+  background: #f6f5f1;
+}
+
+.connection-panel,
+.connection-workspace,
+.connection-overview,
+.queue-column,
+.ticket,
+.empty-state,
+.queue-summary,
+.app-header,
+.dialog {
+  color: #17211d;
+  background: #fff;
+  border-color: #deded8;
+  box-shadow: none;
+}
+
+.connection-panel,
+.dialog {
+  border-radius: 0.75rem;
+}
+
+.connection-overview {
+  border-right: 1px solid #deded8;
+}
+
+.connection-overview h1,
+.connection-overview .supporting-text,
+.connection-overview .eyebrow,
+.connection-overview .provisioning-note,
+.provisioning-note strong {
+  color: #17211d;
+}
+
+.connection-overview h1 {
+  max-width: 100%;
+  font-size: clamp(2rem, 2.7vw, 2.5rem);
+  line-height: 1.05;
+  hyphens: auto;
+}
+
+.provisioning-note {
+  background: #f6f5f1;
+  border-color: #deded8;
+}
+
+.brand-mark {
+  color: #fff;
+  background: #1e6649;
+  border-color: #1e6649;
+  box-shadow: none;
+}
+
+.eyebrow {
+  color: #1e6649;
+}
+
+.button,
+.connect-button,
+.ticket-actions .button,
+.dialog-actions .button {
+  min-height: 2.75rem;
+  padding: 0.65rem 0.95rem;
+  border-radius: 0.55rem;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  box-shadow: none;
+}
+
+.button:hover:not(:disabled) {
+  filter: none;
+}
+
+.button-primary,
+.ticket-actions .button-primary:first-child {
+  color: #fff;
+  background: #1e6649;
+  border-color: #1e6649;
+}
+
+.button-primary:hover:not(:disabled) {
+  background: #174f3a;
+  border-color: #174f3a;
+}
+
+.button-secondary,
+.button-quiet {
+  color: #26342d;
+  background: #fff;
+  border-color: #c9cec9;
+}
+
+.button-danger {
+  color: #fff;
+  background: #943c35;
+  border-color: #943c35;
+}
+
+.queue-column .column-header,
+.queue-column-queued .column-header,
+.queue-column-preparing .column-header,
+.queue-column-ready .column-header {
+  color: #17382d;
+  background: #efeee9;
+  border-color: #deded8;
+}
+
+.queue-column .column-header h2,
+.queue-column .column-header span {
+  color: #17382d;
+}
+
+.ticket,
+.ticket-priority,
+.ticket.age-warning:not(.ticket-priority),
+.ticket.age-critical {
+  border-color: #deded8;
+  border-top-color: #1e6649;
+  box-shadow: none;
+}
+
+.ticket-header {
+  background: #fff;
+}
+
+.dialog-backdrop {
+  background: rgb(24 35 29 / 42%);
+}
+
+input,
+select,
+textarea {
+  border: 1px solid #b9c1bc;
+  border-radius: 0.55rem;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #75b595;
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .connection-overview {
+    border-right: 0;
+    border-bottom: 1px solid #deded8;
+  }
+}

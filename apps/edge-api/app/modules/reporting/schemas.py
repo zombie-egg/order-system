@@ -21,7 +21,7 @@ class StoreOperationsSummary(BaseModel):
 class ReportPeriodResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    store_id: UUID
+    store_id: UUID | None = None
     start_at: datetime
     end_at: datetime
 
@@ -64,3 +64,70 @@ class ReconciliationSummaryResponse(ReportPeriodResponse):
     latest_run_status: str | None
     latest_run_started_at: datetime | None
     latest_run_completed_at: datetime | None
+
+
+class TopProductItem(BaseModel):
+    product_id: UUID
+    sku: str
+    name: str
+    quantity: int
+    revenue_minor: int
+    currency: str
+
+
+class TopProductsResponse(BaseModel):
+    store_ids: list[UUID]
+    start_at: datetime
+    end_at: datetime
+    order_by: str
+    limit: int
+    currency: str
+    items: list[TopProductItem]
+
+
+class StoreSalesSnapshot(BaseModel):
+    store_id: UUID | None = None
+    store_code: str | None = None
+    store_name: str | None = None
+    order_count: int
+    gross_sales_minor: int
+    discount_minor: int
+    net_sales_minor: int
+    tax_minor: int
+    refunded_minor: int
+    net_collected_minor: int
+    ticket_count: int
+
+
+class TrendBucket(BaseModel):
+    bucket: str
+    order_count: int
+    gross_sales_minor: int
+    refunded_minor: int
+    ticket_count: int
+
+
+class MultiStoreSummaryResponse(ReportPeriodResponse):
+    period: str
+    currency: str
+    stores: list[StoreSalesSnapshot]
+    totals: StoreSalesSnapshot
+    trend: list[TrendBucket]
+
+
+class DashboardKpiStore(BaseModel):
+    store_id: UUID | None = None
+    store_code: str | None = None
+    store_name: str | None = None
+    today_order_count: int
+    today_revenue_minor: int
+    open_tickets: int
+    open_manual_reviews: int
+    unknown_payments: int
+
+
+class DashboardKpiResponse(BaseModel):
+    business_date: str
+    currency: str
+    stores: list[DashboardKpiStore]
+    totals: DashboardKpiStore

@@ -6,6 +6,9 @@ import type { KioskOrder, KioskReceipt, Quote, StoreCatalog } from './types';
 
 const catalog: StoreCatalog = {
   store_id: 'store-1',
+  store_name: 'Amsterdam Store',
+  merchant_name: 'SipPilot',
+  logo_url: null,
   locale: 'nl-NL',
   currency: 'EUR',
   price_book_id: 'book-1',
@@ -68,6 +71,8 @@ const quote: Quote = {
   currency: 'EUR',
   locale: 'nl-NL',
   prices_include_tax: true,
+  fulfillment_type: 'DINE_IN',
+  packaging_fee_minor: 0,
   subtotal_minor: 425,
   discount_minor: 0,
   net_minor: 390,
@@ -112,6 +117,8 @@ function order(paymentStatus: KioskOrder['payment_status']): KioskOrder {
     currency: 'EUR',
     locale: 'nl-NL',
     prices_include_tax: true,
+    fulfillment_type: 'DINE_IN',
+    packaging_fee_minor: 0,
     subtotal_minor: 425,
     discount_minor: 0,
     net_minor: 390,
@@ -167,6 +174,8 @@ function apiMock(overrides: Partial<KioskApi> = {}): KioskApi {
       accepting_orders: true,
       currency: 'EUR',
       locale: 'nl-NL',
+      takeaway_fee_enabled: true,
+      takeaway_fee_minor: 25,
     }),
     heartbeat: vi.fn().mockResolvedValue({
       resource_id: 'kiosk-1',
@@ -208,6 +217,8 @@ describe('Customer kiosk ordering workflow', () => {
         accepting_orders: false,
         currency: 'EUR',
         locale: 'nl-NL',
+        takeaway_fee_enabled: false,
+        takeaway_fee_minor: 0,
       }),
     });
     render(<App api={api} />);
@@ -216,6 +227,81 @@ describe('Customer kiosk ordering workflow', () => {
     expect(screen.getByRole('button', { name: 'Latte toevoegen' })).toBeDisabled();
     expect(vi.mocked(api.heartbeat)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(api.getStoreStatus)).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not block ordering for one transient status or heartbeat failure', async () => {
+    const status = vi
+      .fn()
+      .mockResolvedValueOnce({
+        store_id: 'store-1', accepting_orders: true, currency: 'EUR', locale: 'nl-NL',
+        takeaway_fee_enabled: false, takeaway_fee_minor: 0,
+      })
+      .mockRejectedValueOnce(new TypeError('temporary proxy failure'))
+      .mockResolvedValueOnce({
+        store_id: 'store-1', accepting_orders: true, currency: 'EUR', locale: 'nl-NL',
+        takeaway_fee_enabled: false, takeaway_fee_minor: 0,
+      });
+    const api = apiMock({
+      getStoreStatus: status,
+      heartbeat: vi.fn().mockRejectedValue(new TypeError('heartbeat failed')),
+    });
+    render(<App api={api} />);
+
+    const addButton = await screen.findByRole('button', { name: 'Latte toevoegen' });
+    expect(addButton).toBeEnabled();
+    window.dispatchEvent(new Event('online'));
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText('Bestellen is tijdelijk niet beschikbaar')).not.toBeInTheDocument();
+    expect(addButton).toBeEnabled();
+
+    window.dispatchEvent(new Event('online'));
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(3));
+    expect(addButton).toBeEnabled();
+  });
+
+  it('blocks new orders after two consecutive store-status failures', async () => {
+    const status = vi
+      .fn()
+      .mockResolvedValueOnce({
+        store_id: 'store-1', accepting_orders: true, currency: 'EUR', locale: 'nl-NL',
+        takeaway_fee_enabled: false, takeaway_fee_minor: 0,
+      })
+      .mockRejectedValue(new TypeError('network unavailable'));
+    const api = apiMock({ getStoreStatus: status });
+    render(<App api={api} />);
+
+    await screen.findByRole('button', { name: 'Latte toevoegen' });
+    window.dispatchEvent(new Event('online'));
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText('Bestellen is tijdelijk niet beschikbaar')).not.toBeInTheDocument();
+
+    window.dispatchEvent(new Event('online'));
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(3));
+    expect(await screen.findByText('Bestellen is tijdelijk niet beschikbaar')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Latte toevoegen' })).toBeDisabled();
+  });
+
+  it('keeps the mobile cart collapsed until requested and checks out from the drawer', async () => {
+    const api = apiMock();
+    render(<App api={api} />);
+    await addLargeLatte();
+
+    const cartTrigger = screen.getByRole('button', { name: /Bestelling bekijken/ });
+    expect(cartTrigger).toHaveAttribute('aria-expanded', 'false');
+    expect(cartTrigger).toHaveTextContent('1 product');
+    expect(cartTrigger).toHaveTextContent(/€\s*4,25/);
+
+    fireEvent.click(cartTrigger);
+    expect(cartTrigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: 'Verder kiezen' })).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Verder kiezen' }));
+    expect(cartTrigger).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(cartTrigger);
+    fireEvent.click(screen.getByRole('button', { name: 'Bestelling controleren' }));
+    expect(await screen.findByRole('heading', { name: 'Klopt je bestelling?' })).toBeInTheDocument();
+    expect(api.createQuote).toHaveBeenCalledTimes(1);
   });
 
   it('validates required product options before adding a line', async () => {
@@ -257,7 +343,7 @@ describe('Customer kiosk ordering workflow', () => {
     await screen.findByRole('heading', { name: 'Klopt je bestelling?' });
     expect(vi.mocked(api.createQuote)).toHaveBeenCalledWith('nl-NL', [
       { product_id: 'latte', quantity: 1, option_value_ids: ['large'] },
-    ]);
+    ], 'DINE_IN');
     expect(screen.getByText('Prijzen zijn inclusief BTW.')).toBeInTheDocument();
     expect(screen.getByText('€ 0,35')).toBeInTheDocument();
   });
@@ -316,6 +402,7 @@ describe('Customer kiosk ordering workflow', () => {
         quote: null,
         order: null,
         paymentMethod: 'CONTACTLESS',
+        fulfillmentType: 'DINE_IN',
         orderIdempotencyKey: null,
         retryIdempotencyKey: null,
       }),
@@ -439,6 +526,7 @@ describe('Customer kiosk ordering workflow', () => {
         quote: null,
         order: order('UNKNOWN'),
         paymentMethod: 'CONTACTLESS',
+        fulfillmentType: 'DINE_IN',
         orderIdempotencyKey: 'stable-order-key',
         retryIdempotencyKey: null,
       }),

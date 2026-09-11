@@ -91,6 +91,16 @@ function OrderDetail({ order, onBack }: { order: Order; onBack: () => void }) {
       </header>
       <dl className="metric-grid">
         <div>
+          <dt>{choose('用餐方式', 'Bestelwijze')}</dt>
+          <dd>{order.fulfillment_type === 'TAKEAWAY' ? choose('打包', 'Meenemen') : choose('堂食', 'Hier eten')}</dd>
+        </div>
+        {order.packaging_fee_minor > 0 && (
+          <div>
+            <dt>{choose('包装费', 'Verpakkingskosten')}</dt>
+            <dd>{formatMoneyMinor(order.packaging_fee_minor, order.currency, order.locale)}</dd>
+          </div>
+        )}
+        <div>
           <dt>{t('total')}</dt>
           <dd>{formatMoneyMinor(order.total_minor, order.currency, order.locale)}</dd>
         </div>

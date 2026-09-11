@@ -12,10 +12,15 @@ from sqlalchemy import select
 import app.persistence.models  # noqa: F401
 from app.core.config import Settings
 from app.core.enums import PromotionType
-from app.core.errors import ConflictError
+from app.core.errors import ConflictError, ForbiddenError
 from app.core.principals import Principal
 from app.modules.audit.models import AuditLog
-from app.modules.catalog.models import OptionValue, StoreProductAvailability
+from app.modules.catalog.models import (
+    OptionGroup,
+    OptionValue,
+    ProductOptionRule,
+    StoreProductAvailability,
+)
 from app.modules.catalog.schemas import (
     CreateCategoryRequest,
     CreateOptionGroupRequest,
@@ -32,7 +37,9 @@ from app.modules.catalog.service import (
     create_option_group,
     create_price_book,
     create_product,
+    delete_option_group,
     get_store_catalog,
+    list_admin_option_groups,
     set_product_availability,
 )
 from app.modules.identity.models import UserAccount
@@ -303,6 +310,7 @@ async def test_authoritative_quote_reconciles_price_discount_and_inclusive_vat(
             kiosk_id=seed.kiosk_id,
             request=CreateQuoteRequest(
                 locale="en",
+                fulfillment_type="DINE_IN",
                 promotion_code="SAVE10",
                 items=[
                     QuoteItemRequest(
@@ -333,6 +341,89 @@ async def test_authoritative_quote_reconciles_price_discount_and_inclusive_vat(
         "pricing.promotion.created",
         "pricing.tax_policy.created",
     } <= audit_actions
+
+
+@pytest.mark.anyio
+async def test_catalog_write_is_scoped_to_assigned_stores(
+    commerce_database: tuple[Database, CommerceSeed],
+) -> None:
+    """A store-scoped catalog manager cannot create categories/products in other stores."""
+    database, seed = commerce_database
+    foreign_store_id = uuid4()
+    async with database.session_factory() as session, session.begin():
+        with pytest.raises(ForbiddenError):
+            await create_category(
+                session,
+                _principal(seed),
+                CreateCategoryRequest(
+                    store_id=foreign_store_id,
+                    code="Foreign",
+                    translations={"nl-NL": "Vreemd", "en": "Foreign"},
+                ),
+            )
+        with pytest.raises(ForbiddenError):
+            await create_product(
+                session,
+                _principal(seed),
+                CreateProductRequest(
+                    store_id=foreign_store_id,
+                    category_id=seed.store_id,
+                    sku="FOREIGN-01",
+                    tax_category_code="BEVERAGE",
+                    translations={"en": ProductTranslationInput(name="Foreign")},
+                ),
+            )
+        with pytest.raises(ForbiddenError):
+            await create_option_group(
+                session,
+                _principal(seed),
+                CreateOptionGroupRequest(
+                    store_id=foreign_store_id,
+                    code="foreign-size",
+                    translations={"nl-NL": "Vreemd formaat"},
+                    values=[
+                        CreateOptionValueInput(
+                            code="foreign-value", translations={"nl-NL": "Vreemd"}
+                        )
+                    ],
+                ),
+            )
+        with pytest.raises(ForbiddenError):
+            await delete_option_group(
+                session,
+                _principal(seed),
+                foreign_store_id,
+                uuid4(),
+            )
+
+
+@pytest.mark.anyio
+async def test_delete_option_group_detaches_products_and_preserves_history_rows(
+    commerce_database: tuple[Database, CommerceSeed],
+) -> None:
+    database, seed = commerce_database
+    async with database.session_factory() as session, session.begin():
+        value = await session.get(OptionValue, seed.allowed_option_value_id)
+        assert value is not None
+        group_id = value.option_group_id
+        await delete_option_group(session, _principal(seed), seed.store_id, group_id)
+
+        group = await session.get(OptionGroup, group_id)
+        assert group is not None
+        assert group.active is False
+        assert group.archived_at is not None
+        assert "-deleted-" in group.code
+        assert value.active is False
+        assert value.archived_at is not None
+        assert await session.scalar(
+            select(ProductOptionRule).where(ProductOptionRule.option_group_id == group_id)
+        ) is None
+
+    async with database.session_factory() as session:
+        listed_groups = await list_admin_option_groups(
+            session, _principal(seed), seed.store_id
+        )
+    assert group_id not in {listed.id for listed in listed_groups}
 
 
 @pytest.mark.anyio

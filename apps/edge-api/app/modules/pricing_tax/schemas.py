@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 from app.core.api_models import StrictRequestModel
-from app.core.enums import PromotionType, QuoteStatus
+from app.core.enums import FulfillmentType, PromotionType, QuoteStatus
 
 
 def _validate_aware_datetime(value: datetime, field_name: str) -> None:
@@ -78,6 +78,7 @@ class QuoteItemRequest(StrictRequestModel):
 
 class CreateQuoteRequest(StrictRequestModel):
     locale: str = Field(min_length=2, max_length=20)
+    fulfillment_type: FulfillmentType
     items: list[QuoteItemRequest] = Field(min_length=1, max_length=50)
     promotion_code: str | None = Field(default=None, max_length=80)
 
@@ -126,6 +127,8 @@ class QuoteResponse(BaseModel):
     currency: str
     locale: str
     prices_include_tax: bool
+    fulfillment_type: FulfillmentType
+    packaging_fee_minor: int
     subtotal_minor: int
     discount_minor: int
     net_minor: int

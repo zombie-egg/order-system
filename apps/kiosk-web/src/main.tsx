@@ -1,6 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { InfiniteGrid } from './components/ui/the-infinite-grid';
+import { GlassFilter } from './components/ui/liquid-glass-button';
 import './styles.css';
 
 const rootElement = document.getElementById('root');
@@ -11,6 +13,9 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <App initialLocale="zh-CN" />
+    <InfiniteGrid>
+      <GlassFilter />
+      <App />
+    </InfiniteGrid>
   </StrictMode>,
 );
