@@ -1,7 +1,6 @@
 import { type FormEvent, useState } from 'react';
 import {
   DEFAULT_API_BASE_URL,
-  normalizeKioskApiBaseUrl,
   type KioskRuntimeConfig,
   saveSessionKioskConfig,
 } from './api';
@@ -11,7 +10,6 @@ interface DeviceSetupProps {
 }
 
 export function DeviceSetup(props: DeviceSetupProps) {
-  const [apiBaseUrl, setApiBaseUrl] = useState(DEFAULT_API_BASE_URL);
   const [kioskId, setKioskId] = useState('');
   const [kioskKey, setKioskKey] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +18,7 @@ export function DeviceSetup(props: DeviceSetupProps) {
     event.preventDefault();
     try {
       const config = {
-        apiBaseUrl: normalizeKioskApiBaseUrl(apiBaseUrl),
+        apiBaseUrl: DEFAULT_API_BASE_URL,
         kioskId: kioskId.trim(),
         kioskKey: kioskKey.trim(),
       };
@@ -38,8 +36,9 @@ export function DeviceSetup(props: DeviceSetupProps) {
         <p className="eyebrow">SipPilot · 饮航</p>
         <h1 id="setup-title">连接点单机</h1>
         <p className="setup-intro">
-          Voer de eenmalig uitgegeven apparaatgegevens in. De sleutel blijft alleen in deze
-          browsertab en wordt niet in permanente browseropslag bewaard.
+          Voer de eenmalig uitgegeven kioskgegevens van deze vestiging in. De verbinding met de
+          SipPilot-service wordt automatisch ingesteld. De sleutel blijft alleen in deze browsertab
+          en wordt niet in permanente browseropslag bewaard.
         </p>
         <form className="setup-form" onSubmit={submit}>
           {error ? (
@@ -48,17 +47,7 @@ export function DeviceSetup(props: DeviceSetupProps) {
             </p>
           ) : null}
           <label>
-            Edge API-adres
-            <input
-              type="url"
-              value={apiBaseUrl}
-              onChange={(event) => setApiBaseUrl(event.target.value)}
-              required
-              autoComplete="url"
-            />
-          </label>
-          <label>
-            Kiosk-ID
+            Kiosk-ID van deze vestiging
             <input
               value={kioskId}
               onChange={(event) => setKioskId(event.target.value)}
