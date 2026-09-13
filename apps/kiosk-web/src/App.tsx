@@ -754,6 +754,7 @@ export function App({ api: providedApi }: AppProps) {
     setOrder(paidOrder);
     setStep('result');
     setCart([]);
+    setIsMobileCartOpen(false);
     setError(null);
     writeCheckoutSession({
       version: 1,

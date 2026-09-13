@@ -304,6 +304,21 @@ describe('Customer kiosk ordering workflow', () => {
     expect(api.createQuote).toHaveBeenCalledTimes(1);
   });
 
+  it('closes the cart drawer from the backdrop and Escape at any viewport', async () => {
+    render(<App api={apiMock()} />);
+    await addLargeLatte();
+    const trigger = screen.getByRole('button', { name: /Bestelling bekijken/ });
+    fireEvent.click(trigger);
+    const backdrop = screen.getByRole('button', { name: 'Winkelmand sluiten' });
+    expect(backdrop).toBeInTheDocument();
+    fireEvent.click(backdrop);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(trigger);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('validates required product options before adding a line', async () => {
     render(<App api={apiMock()} />);
     await screen.findByRole('heading', { name: 'Warme dranken' });
