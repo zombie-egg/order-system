@@ -3848,3 +3848,20 @@ body,
   bottom: 8px;
   border-radius: 26px;
 }
+
+/* Last-resort viewport contract for kiosk browsers that retain an older
+   containing-block rule from a responsive stylesheet. */
+.kiosk-shell .mobile-cart-trigger {
+  position: fixed !important;
+  left: 8px !important;
+  right: auto !important;
+  width: calc(100vw - 16px) !important;
+  min-width: 0 !important;
+}
+.kiosk-shell .cart-panel {
+  position: fixed !important;
+  left: 8px !important;
+  right: auto !important;
+  width: calc(100vw - 16px) !important;
+  min-width: 0 !important;
+}
