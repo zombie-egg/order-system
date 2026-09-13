@@ -1258,7 +1258,10 @@ export function App({ api: providedApi }: AppProps) {
               Bestelling bekijken
               <small>{cartQuantity} {cartQuantity === 1 ? 'product' : 'producten'}</small>
             </span>
-            <strong>{formatMoney(estimatedTotal, activeCurrency, locale)}</strong>
+            <strong>
+              <small className="cart-trigger-total-label">Totaal</small>
+              {formatMoney(estimatedTotal, activeCurrency, locale)}
+            </strong>
           </button>
           </main>
         </>

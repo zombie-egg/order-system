@@ -3802,3 +3802,28 @@ body,
   background-color: #f7f7f4;
   background-image: linear-gradient(145deg, #ffffff, #eef0ec);
 }
+
+/* Compact order dock: enough breathing room for touch, without consuming the
+   lower part of the menu. */
+.kiosk-shell .mobile-cart-trigger {
+  min-height: clamp(54px, 6vw, 68px);
+  padding: 0.55rem clamp(0.85rem, 2vw, 1.25rem)
+    max(0.55rem, env(safe-area-inset-bottom));
+  border-radius: 16px 16px 0 0;
+}
+.kiosk-shell .mobile-cart-trigger > span { gap: 0.05rem; }
+.kiosk-shell .mobile-cart-trigger > span:first-line { font-size: 0.98rem; }
+.kiosk-shell .mobile-cart-trigger strong {
+  display: grid;
+  justify-items: end;
+  gap: 0.05rem;
+}
+.kiosk-shell .mobile-cart-trigger .cart-trigger-total-label {
+  margin: 0;
+  color: rgb(17 17 17 / 58%);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
