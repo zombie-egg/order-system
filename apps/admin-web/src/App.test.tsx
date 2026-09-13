@@ -130,6 +130,7 @@ describe('Admin console', () => {
         accessToken: 'saved-token',
         apiBaseUrl: 'http://127.0.0.1:8000/api/v1',
         expiresAt: '2099-01-01T00:00:00Z',
+        refreshToken: 'saved-refresh-token',
       }),
     );
     const fetchMock = vi.mocked(fetch);
@@ -176,6 +177,8 @@ describe('Admin console', () => {
               max_open_tickets: 50,
               kds_heartbeat_seconds: 30,
               printer_fallback_enabled: false,
+              takeaway_fee_enabled: false,
+              takeaway_fee_minor: 0,
               version: 1,
             },
           },

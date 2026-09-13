@@ -52,6 +52,15 @@ class AccessTokenClaims:
     token_id: str
 
 
+@dataclass(frozen=True, slots=True)
+class RefreshTokenClaims:
+    subject: str
+    tenant_id: str
+    token_version: int
+    expires_at: datetime
+    token_id: str
+
+
 def _password_bytes(password: str) -> bytes:
     if not isinstance(password, str):
         raise ValueError("Password must be text")
@@ -324,4 +333,134 @@ def decode_access_token(
         permissions=tuple(permissions),
         expires_at=datetime.fromtimestamp(expires_at, tz=UTC),
         token_id=token_id,
+    )
+
+
+MAX_REFRESH_TOKEN_LIFETIME = timedelta(days=365)
+MAX_REFRESH_TOKEN_BYTES = 16 * 1024
+
+
+def create_refresh_token(
+    *,
+    subject: str,
+    tenant_id: str,
+    token_version: int,
+    secret: str,
+    issuer: str,
+    audience: str,
+    lifetime: timedelta,
+    now: datetime | None = None,
+) -> tuple[str, datetime]:
+    """Issue a long-lived, stateless refresh JWT (no database storage required)."""
+    _validate_jwt_secret(secret)
+    if not subject or not tenant_id or not issuer or not audience:
+        raise ValueError("Token identity, issuer, and audience must not be empty")
+    if not _is_strict_integer(token_version) or token_version < 1:
+        raise ValueError("Token version must be a positive integer")
+    if lifetime <= timedelta(0) or lifetime > MAX_REFRESH_TOKEN_LIFETIME:
+        raise ValueError("Refresh-token lifetime must be positive and no longer than one year")
+    supplied_time = now or datetime.now(UTC)
+    issued_at = supplied_time.astimezone(UTC).replace(microsecond=0)
+    issued_timestamp = _utc_timestamp(issued_at)
+    expires_at = issued_at + lifetime
+    payload: dict[str, Any] = {
+        "sub": subject,
+        "tenant_id": tenant_id,
+        "token_version": token_version,
+        "typ": "refresh",
+        "iss": issuer,
+        "aud": audience,
+        "iat": issued_timestamp,
+        "nbf": issued_timestamp,
+        "exp": _utc_timestamp(expires_at),
+        "jti": str(uuid4()),
+    }
+    token = jwt.encode(payload, secret, algorithm="HS256", headers={"typ": "JWT"})
+    if not isinstance(token, str):
+        raise RuntimeError("JWT encoder returned an unexpected token type")
+    return token, expires_at
+
+
+def decode_refresh_token(
+    token: str,
+    *,
+    secret: str,
+    issuer: str,
+    audience: str,
+    now: datetime | None = None,
+) -> RefreshTokenClaims:
+    _validate_jwt_secret(secret)
+    try:
+        token_size = len(token.encode("utf-8")) if isinstance(token, str) else 0
+    except UnicodeError as exc:
+        raise TokenValidationError("Token format is invalid") from exc
+    if (
+        not isinstance(token, str)
+        or not token
+        or token.strip() != token
+        or token_size > MAX_REFRESH_TOKEN_BYTES
+    ):
+        raise TokenValidationError("Token format is invalid")
+
+    required_claims = (
+        "sub",
+        "tenant_id",
+        "token_version",
+        "typ",
+        "iss",
+        "aud",
+        "iat",
+        "nbf",
+        "exp",
+        "jti",
+    )
+    try:
+        header = jwt.get_unverified_header(token)
+        if header != {"alg": "HS256", "typ": "JWT"}:
+            raise TokenValidationError("Token header is invalid")
+        payload = jwt.decode(
+            token,
+            secret,
+            algorithms=["HS256"],
+            issuer=issuer,
+            audience=audience,
+            options={
+                "require": list(required_claims),
+                "strict_aud": True,
+                "verify_exp": False,
+                "verify_iat": False,
+                "verify_nbf": False,
+            },
+        )
+    except TokenValidationError:
+        raise
+    except (InvalidTokenError, TypeError, ValueError, UnicodeError) as exc:
+        raise TokenValidationError("Token signature or claims are invalid") from exc
+
+    if payload.get("typ") != "refresh":
+        raise TokenValidationError("Token is not a refresh token")
+    subject = payload.get("sub")
+    tenant_id = payload.get("tenant_id")
+    token_id = payload.get("jti")
+    token_version = payload.get("token_version")
+    issued_at = payload.get("iat")
+    not_before = payload.get("nbf")
+    expires_at = payload.get("exp")
+    if not all(isinstance(value, str) and value for value in (subject, tenant_id, token_id)):
+        raise TokenValidationError("Token identity claims are invalid")
+    if not _is_strict_integer(token_version):
+        raise TokenValidationError("Token version is invalid")
+    token_version = cast(int, token_version)
+    if not all(_is_strict_integer(value) for value in (issued_at, not_before, expires_at)):
+        raise TokenValidationError("Token time claims are invalid")
+    assert isinstance(expires_at, int)
+    current_timestamp = _utc_timestamp(now or datetime.now(UTC))
+    if expires_at <= current_timestamp:
+        raise TokenValidationError("Token has expired")
+    return RefreshTokenClaims(
+        subject=cast(str, subject),
+        tenant_id=cast(str, tenant_id),
+        token_version=token_version,
+        expires_at=datetime.fromtimestamp(expires_at, tz=UTC),
+        token_id=cast(str, token_id),
     )

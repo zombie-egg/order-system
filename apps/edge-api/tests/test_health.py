@@ -138,7 +138,6 @@ async def test_openapi_exposes_unique_explicit_phase_3_operation_ids() -> None:
         {
             "FulfillmentEndpointId": [],
             "FulfillmentEndpointKey": [],
-            "StaffBearerAuth": [],
         }
     ]
     assert document["paths"]["/api/v1/admin/organization/stores"]["get"]["security"] == [

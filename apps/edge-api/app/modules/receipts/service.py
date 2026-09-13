@@ -11,7 +11,7 @@ from app.core.enums import OrderStatus, PaymentStatus, ReceiptType, RefundStatus
 from app.core.errors import ConflictError, NotFoundError
 from app.core.principals import Principal
 from app.modules.audit.service import canonical_hash
-from app.modules.ordering.models import OrderItem, OrderTaxLine, SalesOrder
+from app.modules.ordering.models import OrderItem, OrderItemOption, OrderTaxLine, SalesOrder
 from app.modules.organization.models import LegalEntity, Store
 from app.modules.payments.models import Refund
 from app.modules.receipts.models import Receipt
@@ -54,6 +54,23 @@ async def create_sale_receipt(session: AsyncSession, order: SalesOrder) -> Recei
             )
         ).all()
     )
+    item_ids = [item.id for item in items]
+    options_by_item: dict[UUID, list[dict[str, Any]]] = {item_id: [] for item_id in item_ids}
+    if item_ids:
+        for option in (
+            await session.scalars(
+                select(OrderItemOption)
+                .where(OrderItemOption.order_item_id.in_(item_ids))
+                .order_by(OrderItemOption.order_item_id, OrderItemOption.option_number)
+            )
+        ).all():
+            options_by_item[option.order_item_id].append(
+                {
+                    "group_name": option.group_name_snapshot,
+                    "name": option.name_snapshot,
+                    "price_delta_minor": option.price_delta_minor,
+                }
+            )
     tax_lines = list(
         (
             await session.scalars(
@@ -78,6 +95,7 @@ async def create_sale_receipt(session: AsyncSession, order: SalesOrder) -> Recei
             "display_number": order.display_number,
             "business_date": order.business_date.isoformat(),
             "confirmed_at": order.confirmed_at.isoformat() if order.confirmed_at else None,
+            "fulfillment_type": order.fulfillment_type.value,
         },
         "currency": order.currency,
         "prices_include_tax": order.prices_include_tax,
@@ -88,6 +106,7 @@ async def create_sale_receipt(session: AsyncSession, order: SalesOrder) -> Recei
             "tax_minor": order.tax_minor,
             "total_minor": order.total_minor,
             "paid_minor": order.paid_minor,
+            "packaging_fee_minor": order.packaging_fee_minor,
         },
         "items": [
             {
@@ -97,6 +116,7 @@ async def create_sale_receipt(session: AsyncSession, order: SalesOrder) -> Recei
                 "quantity": item.quantity,
                 "line_total_minor": item.line_total_minor,
                 "tax_rate_ppm": item.tax_rate_ppm,
+                "options": options_by_item[item.id],
             }
             for item in items
         ],

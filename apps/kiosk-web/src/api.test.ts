@@ -69,7 +69,7 @@ describe('KioskApiClient', () => {
 
     const promise = client.createQuote('nl-NL', [
       { product_id: 'product-1', quantity: 1, option_value_ids: [] },
-    ]);
+    ], 'DINE_IN');
 
     await expect(promise).rejects.toMatchObject({
       code: 'store_not_accepting_orders',
@@ -98,6 +98,10 @@ describe('KioskApiClient', () => {
     expect(normalizeKioskApiBaseUrl('http://127.0.0.1:8000/api/v1/')).toBe(
       'http://127.0.0.1:8000/api/v1',
     );
+  });
+
+  it('keeps a same-origin relative base path and strips trailing slashes', () => {
+    expect(normalizeKioskApiBaseUrl(' /api/v1/ ')).toBe('/api/v1');
   });
 
   it('calls the kiosk status and heartbeat endpoints with the device credentials', async () => {

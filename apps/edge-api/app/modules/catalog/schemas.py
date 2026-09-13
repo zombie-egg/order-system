@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 from app.core.api_models import StrictRequestModel
+from app.core.enums import ProductStatus
 from app.core.sensitive_data import contains_sensitive_card_data
 
 LOCALE_PATTERN = re.compile(r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$")
@@ -74,6 +75,7 @@ class CreateOptionValueInput(StrictRequestModel):
     code: str = Field(min_length=1, max_length=80)
     translations: dict[str, str] = Field(min_length=1)
     sort_order: int = Field(default=0, ge=0)
+    active: bool = True
 
     @model_validator(mode="after")
     def validate_translations(self) -> CreateOptionValueInput:
@@ -115,6 +117,7 @@ class ProductOptionRuleInput(StrictRequestModel):
     minimum_selections: int = Field(default=0, ge=0, le=20)
     maximum_selections: int = Field(default=1, ge=1, le=20)
     sort_order: int = Field(default=0, ge=0)
+    default_option_value_id: UUID | None = None
 
     @model_validator(mode="after")
     def validate_range(self) -> ProductOptionRuleInput:
@@ -124,7 +127,8 @@ class ProductOptionRuleInput(StrictRequestModel):
 
 
 class CreateProductRequest(StrictRequestModel):
-    store_id: UUID
+    store_id: UUID | None = None
+    store_ids: list[UUID] | None = None
     category_id: UUID
     sku: str = Field(min_length=1, max_length=100)
     tax_category_code: str = Field(min_length=1, max_length=80)
@@ -133,6 +137,7 @@ class CreateProductRequest(StrictRequestModel):
     preparation_data: dict[str, Any] = Field(default_factory=dict)
     allergen_data: dict[str, Any] = Field(default_factory=dict)
     sort_order: int = Field(default=0, ge=0)
+    price_minor: int | None = Field(default=None, ge=0, le=100_000_000)
     option_rules: list[ProductOptionRuleInput] = Field(default_factory=list, max_length=20)
 
     @model_validator(mode="after")
@@ -154,6 +159,16 @@ class CreateProductRequest(StrictRequestModel):
         group_ids = [rule.option_group_id for rule in self.option_rules]
         if len(set(group_ids)) != len(group_ids):
             raise ValueError("A product can reference each option group only once")
+        if self.store_ids is not None and self.store_ids:
+            if self.store_id is not None:
+                raise ValueError("Provide either store_id or store_ids, not both")
+            if len(set(self.store_ids)) != len(self.store_ids):
+                raise ValueError("Store ids must be distinct")
+            self.store_id = self.store_ids[0]
+        elif self.store_id is not None:
+            self.store_ids = [self.store_id]
+        else:
+            raise ValueError("Provide a store_id or store_ids")
         return self
 
 
@@ -220,6 +235,9 @@ class CatalogOptionValueResponse(BaseModel):
     code: str
     name: str
     price_delta_minor: int
+    active: bool = True
+    sort_order: int = 0
+    is_default: bool = False
 
 
 class CatalogOptionGroupResponse(BaseModel):
@@ -228,6 +246,8 @@ class CatalogOptionGroupResponse(BaseModel):
     name: str
     minimum_selections: int
     maximum_selections: int
+    active: bool = True
+    sort_order: int = 0
     values: list[CatalogOptionValueResponse]
 
 
@@ -253,7 +273,136 @@ class CatalogCategoryResponse(BaseModel):
 
 class StoreCatalogResponse(BaseModel):
     store_id: UUID
+    store_name: str
+    merchant_name: str
+    logo_url: str | None
     locale: str
     currency: str
     price_book_id: UUID
     categories: list[CatalogCategoryResponse]
+
+
+class AdminProductListItem(BaseModel):
+    id: UUID
+    sku: str
+    name: str
+    description: str
+    image_url: str | None
+    category_id: UUID | None
+    category_name: str | None
+    price_minor: int | None
+    currency: str | None
+    tax_category_code: str
+    status: str
+    active: bool
+    sort_order: int
+    available: bool
+    version: int
+    option_rules: list[ProductOptionRuleInput] = Field(default_factory=list)
+    option_prices: dict[UUID, int] = Field(default_factory=dict)
+
+
+class AdminProductListResponse(BaseModel):
+    store_id: UUID
+    currency: str
+    price_book_id: UUID | None
+    products: list[AdminProductListItem]
+
+
+class UpdateProductRequest(StrictRequestModel):
+    category_id: UUID | None = None
+    image_url: HttpUrl | None = None
+    sort_order: int | None = Field(default=None, ge=0)
+    status: ProductStatus | None = None
+    active: bool | None = None
+    translations: dict[str, ProductTranslationInput] | None = None
+    option_rules: list[ProductOptionRuleInput] | None = None
+
+    @model_validator(mode="after")
+    def validate_update(self) -> UpdateProductRequest:
+        if not (
+            self.category_id is not None
+            or self.image_url is not None
+            or self.sort_order is not None
+            or self.status is not None
+            or self.active is not None
+            or self.translations
+            or self.option_rules is not None
+        ):
+            raise ValueError("At least one field must be provided")
+        if self.translations is not None:
+            if len(self.translations) > MAX_TRANSLATIONS:
+                raise ValueError(f"At most {MAX_TRANSLATIONS} translations are allowed")
+            normalized: dict[str, ProductTranslationInput] = {}
+            seen_locales: set[str] = set()
+            for locale, translation in self.translations.items():
+                normalized_locale = _validate_locale(locale)
+                locale_key = normalized_locale.casefold()
+                if locale_key in seen_locales:
+                    raise ValueError("Translation locales must be distinct")
+                seen_locales.add(locale_key)
+                normalized[normalized_locale] = translation
+            self.translations = normalized
+        return self
+
+
+class UpdateOptionGroupRequest(StrictRequestModel):
+    translations: dict[str, str] | None = None
+    sort_order: int | None = Field(default=None, ge=0)
+    active: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_update(self) -> UpdateOptionGroupRequest:
+        if self.translations is not None:
+            self.translations = _validate_simple_translations(self.translations)
+        if self.translations is None and self.sort_order is None and self.active is None:
+            raise ValueError("At least one option-group field must be provided")
+        return self
+
+
+class UpdateOptionValueRequest(StrictRequestModel):
+    translations: dict[str, str] | None = None
+    sort_order: int | None = Field(default=None, ge=0)
+    active: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_update(self) -> UpdateOptionValueRequest:
+        if self.translations is not None:
+            self.translations = _validate_simple_translations(self.translations)
+        if self.translations is None and self.sort_order is None and self.active is None:
+            raise ValueError("At least one option-value field must be provided")
+        return self
+
+
+class AdminOptionValueResponse(BaseModel):
+    id: UUID
+    code: str
+    translations: dict[str, str]
+    sort_order: int
+    active: bool
+
+
+class AdminOptionGroupResponse(BaseModel):
+    id: UUID
+    store_id: UUID
+    code: str
+    translations: dict[str, str]
+    sort_order: int
+    active: bool
+    values: list[AdminOptionValueResponse]
+
+
+class SetProductOptionPriceRequest(StrictRequestModel):
+    price_delta_minor: int = Field(ge=-1_000_000, le=1_000_000)
+
+
+class SetProductPriceRequest(StrictRequestModel):
+    price_minor: int = Field(ge=0, le=100_000_000)
+
+
+class AdminCategoryResponse(BaseModel):
+    id: UUID
+    code: str
+    name: str
+    sort_order: int
+    active: bool

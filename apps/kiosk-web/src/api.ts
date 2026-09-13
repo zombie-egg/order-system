@@ -1,4 +1,5 @@
 import type {
+  FulfillmentType,
   KioskOrder,
   KioskHeartbeat,
   KioskReceipt,
@@ -13,7 +14,11 @@ export interface KioskApi {
   getStoreStatus: () => Promise<KioskStoreStatus>;
   heartbeat: () => Promise<KioskHeartbeat>;
   getCatalog: (locale: string) => Promise<StoreCatalog>;
-  createQuote: (locale: string, items: QuoteItemRequest[]) => Promise<Quote>;
+  createQuote: (
+    locale: string,
+    items: QuoteItemRequest[],
+    fulfillmentType: FulfillmentType,
+  ) => Promise<Quote>;
   createOrder: (
     quoteId: string,
     paymentMethod: PaymentMethod,
@@ -72,6 +77,11 @@ export class ApiError extends Error {
 export function normalizeKioskApiBaseUrl(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) throw new Error('API-adres is verplicht.');
+  // Same-origin deployments (one reverse proxy in front of the API and the
+  // three web apps) configure a relative path such as `/api/v1`.
+  if (trimmed.startsWith('/')) {
+    return trimmed.replace(/\/+$/, '');
+  }
   let parsed: URL;
   try {
     parsed = new URL(trimmed);
@@ -188,10 +198,10 @@ export class KioskApiClient implements KioskApi {
     return this.request('/kiosk/heartbeat', { method: 'POST' });
   }
 
-  createQuote(locale: string, items: QuoteItemRequest[]): Promise<Quote> {
+  createQuote(locale: string, items: QuoteItemRequest[], fulfillmentType: FulfillmentType): Promise<Quote> {
     return this.request('/kiosk/quotes', {
       method: 'POST',
-      body: JSON.stringify({ locale, items }),
+      body: JSON.stringify({ locale, items, fulfillment_type: fulfillmentType }),
     });
   }
 

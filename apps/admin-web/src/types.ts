@@ -11,12 +11,14 @@ export interface AccessTokenResponse {
   access_token: string;
   token_type: string;
   expires_at: string;
+  refresh_token?: string;
 }
 
 export interface StoredSession {
   apiBaseUrl: string;
   accessToken: string;
   expiresAt: string;
+  refreshToken: string;
 }
 
 export interface ProblemDetails {
@@ -32,6 +34,7 @@ export interface Store {
   id: UUID;
   code: string;
   name: string;
+  city?: string | null;
   country_code: string;
   currency: string;
   locale: string;
@@ -46,12 +49,62 @@ export interface StorePolicy {
   max_open_tickets: number;
   kds_heartbeat_seconds: number;
   printer_fallback_enabled: boolean;
+  takeaway_fee_enabled: boolean;
+  takeaway_fee_minor: number;
   version: number;
 }
 
 export interface StoreWithPolicy {
   store: Store;
   policy: StorePolicy;
+}
+
+export interface StoreDeviceCredentials {
+  store_id: UUID;
+  kiosk_id: UUID | null;
+  kiosk_code: string | null;
+  kiosk_key: string | null;
+  station_id: UUID | null;
+  endpoint_id: UUID | null;
+  endpoint_code: string | null;
+  endpoint_key: string | null;
+  terminal_id: UUID | null;
+  terminal_provider: string | null;
+}
+
+export interface CreatedStore extends StoreWithPolicy {
+  tenant_code: string;
+  device_credentials: StoreDeviceCredentials;
+  manager_account: StoreManager;
+}
+
+export interface StoreManager {
+  user_id: UUID;
+  username: string;
+  display_name: string;
+  active: boolean;
+}
+
+export interface StoreConnection {
+  store_id: UUID;
+  store_code: string;
+  store_name: string;
+  tenant_code: string;
+  kiosk_id: UUID | null;
+  kiosk_key: string | null;
+  endpoint_id: UUID | null;
+  endpoint_key: string | null;
+  managers: StoreManager[];
+}
+
+export interface KdsBoard {
+  store_id: UUID;
+  station_id: UUID;
+  code: string;
+  name: string;
+  display_title: string | null;
+  enabled: boolean;
+  version: number;
 }
 
 export interface UserAccount {
@@ -119,6 +172,8 @@ export interface Order {
   currency: string;
   locale: string;
   prices_include_tax: boolean;
+  fulfillment_type: 'DINE_IN' | 'TAKEAWAY';
+  packaging_fee_minor: number;
   subtotal_minor: number;
   discount_minor: number;
   net_minor: number;
@@ -247,9 +302,149 @@ export interface ResourceCreated {
   id: UUID;
 }
 
+export interface AdminCategory {
+  id: UUID;
+  code: string;
+  name: string;
+  sort_order: number;
+  active: boolean;
+}
+
+export interface AdminProduct {
+  id: UUID;
+  sku: string;
+  name: string;
+  description: string;
+  image_url: string | null;
+  category_id: UUID | null;
+  category_name: string | null;
+  price_minor: number | null;
+  currency: string | null;
+  tax_category_code: string;
+  status: string;
+  active: boolean;
+  sort_order: number;
+  available: boolean;
+  version: number;
+  option_rules: ProductOptionRule[];
+  option_prices: Record<UUID, number>;
+}
+
+export interface ProductOptionRule {
+  option_group_id: UUID;
+  minimum_selections: number;
+  maximum_selections: number;
+  sort_order: number;
+  default_option_value_id: UUID | null;
+}
+
+export interface AdminOptionValue {
+  id: UUID;
+  code: string;
+  translations: Record<string, string>;
+  sort_order: number;
+  active: boolean;
+}
+
+export interface AdminOptionGroup {
+  id: UUID;
+  store_id: UUID;
+  code: string;
+  translations: Record<string, string>;
+  sort_order: number;
+  active: boolean;
+  values: AdminOptionValue[];
+}
+
+export interface AdminProductList {
+  store_id: UUID;
+  currency: string;
+  price_book_id: UUID | null;
+  products: AdminProduct[];
+}
+
+export interface ProductImageUpload {
+  image_url: string;
+}
+
+export interface Branding {
+  merchant_name: string;
+  logo_url: string | null;
+}
+
 export interface ReportsBundle {
   sales: SalesSummary;
   refunds: RefundSummary;
   fulfillment: FulfillmentSummary;
   reconciliation: ReconciliationSummary;
+}
+
+export interface TopProductItem {
+  product_id: UUID;
+  sku: string;
+  name: string;
+  quantity: number;
+  revenue_minor: number;
+  currency: string;
+}
+
+export interface TopProductsResponse {
+  store_ids: UUID[];
+  start_at: string;
+  end_at: string;
+  order_by: 'quantity' | 'revenue';
+  limit: number;
+  currency: string;
+  items: TopProductItem[];
+}
+
+export interface StoreSalesSnapshot {
+  store_id: UUID | null;
+  store_code: string | null;
+  store_name: string | null;
+  order_count: number;
+  gross_sales_minor: number;
+  discount_minor: number;
+  net_sales_minor: number;
+  tax_minor: number;
+  refunded_minor: number;
+  net_collected_minor: number;
+  ticket_count: number;
+}
+
+export interface TrendBucket {
+  bucket: string;
+  order_count: number;
+  gross_sales_minor: number;
+  refunded_minor: number;
+  ticket_count: number;
+}
+
+export interface MultiStoreSummary {
+  store_id: UUID | null;
+  start_at: string;
+  end_at: string;
+  period: 'day' | 'week' | 'month';
+  currency: string;
+  stores: StoreSalesSnapshot[];
+  totals: StoreSalesSnapshot;
+  trend: TrendBucket[];
+}
+
+export interface DashboardKpiStore {
+  store_id: UUID | null;
+  store_code: string | null;
+  store_name: string | null;
+  today_order_count: number;
+  today_revenue_minor: number;
+  open_tickets: number;
+  open_manual_reviews: number;
+  unknown_payments: number;
+}
+
+export interface DashboardKpi {
+  business_date: string;
+  currency: string;
+  stores: DashboardKpiStore[];
+  totals: DashboardKpiStore;
 }

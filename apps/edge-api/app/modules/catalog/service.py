@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select, true, update
+from sqlalchemy import and_, delete, or_, select, true, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,17 +30,30 @@ from app.modules.catalog.models import (
     StoreProductAvailability,
 )
 from app.modules.catalog.schemas import (
+    AdminCategoryResponse,
+    AdminOptionGroupResponse,
+    AdminOptionValueResponse,
+    AdminProductListItem,
+    AdminProductListResponse,
     CatalogCategoryResponse,
     CatalogOptionGroupResponse,
     CatalogOptionValueResponse,
     CatalogProductResponse,
     CreateCategoryRequest,
     CreateOptionGroupRequest,
+    CreateOptionValueInput,
     CreatePriceBookRequest,
     CreateProductRequest,
+    PriceBookProductInput,
+    ProductOptionRuleInput,
+    SetProductOptionPriceRequest,
+    SetProductPriceRequest,
     StoreCatalogResponse,
+    UpdateOptionGroupRequest,
+    UpdateOptionValueRequest,
+    UpdateProductRequest,
 )
-from app.modules.organization.models import LegalEntity, Store
+from app.modules.organization.models import LegalEntity, Store, Tenant
 from app.modules.organization.service import get_store_for_tenant
 from app.persistence.base import utc_now
 
@@ -131,6 +144,7 @@ async def create_option_group(
         raise ConflictError("duplicate_option_code", "Option value codes must be distinct")
     group = OptionGroup(
         tenant_id=principal.tenant_id,
+        store_id=request.store_id,
         code=normalize_code(request.code),
         sort_order=request.sort_order,
     )
@@ -148,6 +162,7 @@ async def create_option_group(
             option_group_id=group.id,
             code=normalize_code(value_input.code),
             sort_order=value_input.sort_order,
+            active=value_input.active,
         )
         session.add(value)
         await session.flush()
@@ -173,7 +188,11 @@ async def create_product(
     principal: Principal,
     request: CreateProductRequest,
 ) -> Product:
-    await get_store_for_tenant(session, principal, request.store_id)
+    store_ids = list(request.store_ids or [])
+    stores: list[Store] = []
+    for store_id in store_ids:
+        stores.append(await get_store_for_tenant(session, principal, store_id))
+    primary_store = stores[0] if stores else None
     category = await session.scalar(
         select(Category).where(
             Category.id == request.category_id,
@@ -190,6 +209,7 @@ async def create_product(
                 select(OptionGroup.id).where(
                     OptionGroup.id.in_(requested_groups),
                     OptionGroup.tenant_id == principal.tenant_id,
+                    OptionGroup.store_id.in_(store_ids),
                     OptionGroup.active,
                 )
             )
@@ -197,6 +217,17 @@ async def create_product(
     )
     if groups != requested_groups:
         raise ConflictError("invalid_option_group", "One or more option groups are invalid")
+    for rule in request.option_rules:
+        if rule.default_option_value_id is not None:
+            default_exists = await session.scalar(
+                select(OptionValue.id).where(
+                    OptionValue.id == rule.default_option_value_id,
+                    OptionValue.option_group_id == rule.option_group_id,
+                    OptionValue.active,
+                )
+            )
+            if default_exists is None:
+                raise ConflictError("invalid_default_option", "The default option is invalid")
     product = Product(
         tenant_id=principal.tenant_id,
         category_id=category.id,
@@ -228,30 +259,43 @@ async def create_product(
             minimum_selections=rule.minimum_selections,
             maximum_selections=rule.maximum_selections,
             sort_order=rule.sort_order,
+            default_option_value_id=rule.default_option_value_id,
         )
         for rule in request.option_rules
     )
-    session.add(
-        StoreProductAvailability(
-            store_id=request.store_id,
-            product_id=product.id,
-            available=True,
+    for store_id in store_ids:
+        session.add(
+            StoreProductAvailability(
+                store_id=store_id,
+                product_id=product.id,
+                available=True,
+            )
         )
-    )
     await session.flush()
-    _audit_catalog_change(
-        session,
-        principal,
-        store_id=request.store_id,
-        action="catalog.product.created",
-        target_type="product",
-        target_id=product.id,
-        after={
-            "sku": product.sku,
-            "tax_category_code": product.tax_category_code,
-            "active": product.active,
-        },
-    )
+    if request.price_minor is not None:
+        for store_id in store_ids:
+            await set_product_price(
+                session,
+                principal,
+                store_id,
+                product.id,
+                SetProductPriceRequest(price_minor=request.price_minor),
+            )
+    if primary_store is not None:
+        _audit_catalog_change(
+            session,
+            principal,
+            store_id=primary_store.id,
+            action="catalog.product.created",
+            target_type="product",
+            target_id=product.id,
+            after={
+                "sku": product.sku,
+                "tax_category_code": product.tax_category_code,
+                "active": product.active,
+                "store_ids": [str(store_id) for store_id in store_ids],
+            },
+        )
     return product
 
 
@@ -464,14 +508,15 @@ async def get_store_catalog(
 ) -> StoreCatalogResponse:
     store_row = (
         await session.execute(
-            select(Store, LegalEntity)
+            select(Store, LegalEntity, Tenant)
             .join(LegalEntity, LegalEntity.id == Store.legal_entity_id)
-            .where(Store.id == store_id, Store.active, LegalEntity.active)
+            .join(Tenant, Tenant.id == LegalEntity.tenant_id)
+            .where(Store.id == store_id, Store.active, LegalEntity.active, Tenant.active)
         )
     ).one_or_none()
     if store_row is None:
         raise NotFoundError("store", str(store_id))
-    store, legal_entity = store_row
+    store, legal_entity, tenant = store_row
     price_book = await get_current_price_book(session, store_id)
 
     product_rows = (
@@ -544,7 +589,11 @@ async def get_store_catalog(
         group.id: group
         for group in (
             await session.scalars(
-                select(OptionGroup).where(OptionGroup.id.in_(group_ids), OptionGroup.active)
+                select(OptionGroup).where(
+                    OptionGroup.id.in_(group_ids),
+                    OptionGroup.store_id == store_id,
+                    OptionGroup.active,
+                )
             )
         ).all()
     }
@@ -628,6 +677,8 @@ async def get_store_catalog(
                     ),
                     minimum_selections=rule.minimum_selections,
                     maximum_selections=rule.maximum_selections,
+                    active=group.active,
+                    sort_order=group.sort_order,
                     values=[
                         CatalogOptionValueResponse(
                             id=value.id,
@@ -640,6 +691,9 @@ async def get_store_catalog(
                                 value.code,
                             ),
                             price_delta_minor=option_prices.get((product.id, value.id), 0),
+                            active=value.active,
+                            sort_order=value.sort_order,
+                            is_default=value.id == rule.default_option_value_id,
                         )
                         for value in values_by_group.get(group.id, [])
                     ],
@@ -662,6 +716,9 @@ async def get_store_catalog(
         products_by_category[product.category_id].append(product_responses[product.id])
     return StoreCatalogResponse(
         store_id=store.id,
+        store_name=store.name,
+        merchant_name=(tenant.brand_name or tenant.name),
+        logo_url=tenant.logo_url,
         locale=requested_locale,
         currency=price_book.currency,
         price_book_id=price_book.id,
@@ -681,3 +738,690 @@ async def get_store_catalog(
             for category in categories
         ],
     )
+
+
+async def list_admin_products(
+    session: AsyncSession,
+    principal: Principal,
+    store_id: UUID,
+) -> AdminProductListResponse:
+    store = await get_store_for_tenant(session, principal, store_id)
+    rows = (
+        await session.execute(
+            select(Product, StoreProductAvailability)
+            .join(
+                StoreProductAvailability,
+                and_(
+                    StoreProductAvailability.product_id == Product.id,
+                    StoreProductAvailability.store_id == store_id,
+                ),
+            )
+            .where(Product.tenant_id == principal.tenant_id, Product.archived_at.is_(None))
+            .order_by(Product.sort_order, Product.sku)
+        )
+    ).all()
+    product_ids = [product.id for product, _ in rows]
+    avail_map = {product.id: availability.available for product, availability in rows}
+    product_rules: dict[UUID, list[ProductOptionRule]] = defaultdict(list)
+    if product_ids:
+        rules = (
+            await session.scalars(
+                select(ProductOptionRule)
+                .join(OptionGroup, OptionGroup.id == ProductOptionRule.option_group_id)
+                .where(
+                    ProductOptionRule.product_id.in_(product_ids),
+                    OptionGroup.store_id == store.id,
+                )
+                .order_by(ProductOptionRule.sort_order)
+            )
+        ).all()
+        for rule in rules:
+            product_rules[rule.product_id].append(rule)
+
+    category_ids = {product.category_id for product, _ in rows if product.category_id}
+    category_names: dict[UUID, str] = {}
+    if category_ids:
+        for row in (
+            await session.scalars(
+                select(CategoryTranslation).where(
+                    CategoryTranslation.category_id.in_(category_ids),
+                    CategoryTranslation.locale.in_({store.locale, "nl-NL", "en"}),
+                )
+            )
+        ).all():
+            category_names.setdefault(row.category_id, row.name)
+
+    product_translations: dict[UUID, ProductTranslation] = {}
+    if product_ids:
+        for row in (
+            await session.scalars(
+                select(ProductTranslation).where(
+                    ProductTranslation.product_id.in_(product_ids),
+                    ProductTranslation.locale.in_({store.locale, "nl-NL", "en"}),
+                )
+            )
+        ).all():
+            product_translations.setdefault(row.product_id, row)
+
+    price_book_id = None
+    currency = store.currency
+    prices: dict[UUID, int] = {}
+    option_price_map: dict[UUID, dict[UUID, int]] = defaultdict(dict)
+    try:
+        price_book = await get_current_price_book(session, store_id)
+        price_book_id = price_book.id
+        currency = price_book.currency
+        items = (
+            await session.scalars(
+                select(PriceBookItem).where(PriceBookItem.price_book_id == price_book.id)
+            )
+        ).all()
+        prices = {item.product_id: item.price_minor for item in items}
+        for option_price in (
+            await session.scalars(
+                select(PriceBookOptionItem).where(
+                    PriceBookOptionItem.price_book_id == price_book.id,
+                    PriceBookOptionItem.product_id.in_(product_ids),
+                )
+            )
+        ).all():
+            option_price_map[option_price.product_id][option_price.option_value_id] = (
+                option_price.price_delta_minor
+            )
+    except ConflictError:
+        pass
+
+    product_responses: list[AdminProductListItem] = []
+    for product, _ in rows:
+        translation = product_translations.get(product.id)
+        product_responses.append(
+            AdminProductListItem(
+                id=product.id,
+                sku=product.sku,
+                name=translation.name if translation else product.sku,
+                description=translation.description if translation else "",
+                image_url=product.image_url,
+                category_id=product.category_id,
+                category_name=(
+                    category_names.get(product.category_id) if product.category_id else None
+                ),
+                price_minor=prices.get(product.id),
+                currency=currency,
+                tax_category_code=product.tax_category_code,
+                status=product.status.value,
+                active=product.active,
+                sort_order=product.sort_order,
+                available=avail_map.get(product.id, True),
+                version=product.version,
+                option_rules=[
+                    ProductOptionRuleInput(
+                        option_group_id=rule.option_group_id,
+                        minimum_selections=rule.minimum_selections,
+                        maximum_selections=rule.maximum_selections,
+                        sort_order=rule.sort_order,
+                        default_option_value_id=rule.default_option_value_id,
+                    )
+                    for rule in product_rules.get(product.id, [])
+                ],
+                option_prices=option_price_map[product.id],
+            )
+        )
+    return AdminProductListResponse(
+        store_id=store.id,
+        currency=currency,
+        price_book_id=price_book_id,
+        products=product_responses,
+    )
+
+
+async def update_product(
+    session: AsyncSession,
+    principal: Principal,
+    store_id: UUID,
+    product_id: UUID,
+    request: UpdateProductRequest,
+) -> Product:
+    store = await get_store_for_tenant(session, principal, store_id)
+    product = await session.scalar(
+        select(Product).where(Product.id == product_id, Product.tenant_id == principal.tenant_id)
+    )
+    if product is None:
+        raise NotFoundError("product", str(product_id))
+    availability = await session.scalar(
+        select(StoreProductAvailability).where(
+            StoreProductAvailability.store_id == store.id,
+            StoreProductAvailability.product_id == product_id,
+        )
+    )
+    if availability is None:
+        raise NotFoundError("store_product_availability", str(product_id))
+    before = {"sku": product.sku, "active": product.active, "status": product.status.value}
+    if request.category_id is not None:
+        category = await session.scalar(
+            select(Category).where(
+                Category.id == request.category_id,
+                Category.tenant_id == principal.tenant_id,
+                Category.active,
+            )
+        )
+        if category is None:
+            raise NotFoundError("category", str(request.category_id))
+        product.category_id = request.category_id
+    if request.image_url is not None:
+        product.image_url = str(request.image_url)
+    if request.sort_order is not None:
+        product.sort_order = request.sort_order
+    if request.status is not None:
+        product.status = request.status
+    if request.active is not None:
+        product.active = request.active
+    if request.translations:
+        for locale, translation in request.translations.items():
+            existing = await session.scalar(
+                select(ProductTranslation).where(
+                    ProductTranslation.product_id == product_id,
+                    ProductTranslation.locale == locale,
+                )
+            )
+            if existing is not None:
+                existing.name = translation.name.strip()
+                existing.description = translation.description.strip()
+            else:
+                session.add(
+                    ProductTranslation(
+                        product_id=product_id,
+                        locale=locale,
+                        name=translation.name.strip(),
+                        description=translation.description.strip(),
+                    )
+                )
+    if request.option_rules is not None:
+        requested_group_ids = {rule.option_group_id for rule in request.option_rules}
+        valid_groups = set(
+            (
+                await session.scalars(
+                    select(OptionGroup.id).where(
+                        OptionGroup.id.in_(requested_group_ids),
+                        OptionGroup.tenant_id == principal.tenant_id,
+                        OptionGroup.store_id == store.id,
+                        OptionGroup.active,
+                    )
+                )
+            ).all()
+        )
+        if valid_groups != requested_group_ids:
+            raise ConflictError("invalid_option_group", "One or more option groups are invalid")
+        for rule in request.option_rules:
+            if rule.default_option_value_id is not None:
+                default_exists = await session.scalar(
+                    select(OptionValue.id).where(
+                        OptionValue.id == rule.default_option_value_id,
+                        OptionValue.option_group_id == rule.option_group_id,
+                        OptionValue.active,
+                    )
+                )
+                if default_exists is None:
+                    raise ConflictError("invalid_default_option", "The default option is invalid")
+        await session.execute(
+            delete(ProductOptionRule).where(ProductOptionRule.product_id == product.id)
+        )
+        session.add_all(
+            ProductOptionRule(
+                product_id=product.id,
+                option_group_id=rule.option_group_id,
+                minimum_selections=rule.minimum_selections,
+                maximum_selections=rule.maximum_selections,
+                sort_order=rule.sort_order,
+                default_option_value_id=rule.default_option_value_id,
+            )
+            for rule in request.option_rules
+        )
+    await session.flush()
+    _audit_catalog_change(
+        session,
+        principal,
+        store_id=store.id,
+        action="catalog.product.updated",
+        target_type="product",
+        target_id=product.id,
+        before=before,
+        after={"sku": product.sku, "active": product.active, "status": product.status.value},
+    )
+    return product
+
+
+async def set_product_price(
+    session: AsyncSession,
+    principal: Principal,
+    store_id: UUID,
+    product_id: UUID,
+    request: SetProductPriceRequest,
+) -> None:
+    store = await get_store_for_tenant(session, principal, store_id)
+    availability = await session.scalar(
+        select(StoreProductAvailability).where(
+            StoreProductAvailability.store_id == store.id,
+            StoreProductAvailability.product_id == product_id,
+        )
+    )
+    if availability is None:
+        raise NotFoundError("store_product_availability", str(product_id))
+    try:
+        price_book = await get_current_price_book(session, store.id)
+    except ConflictError:
+        await create_price_book(
+            session,
+            principal,
+            CreatePriceBookRequest(
+                store_id=store.id,
+                code="STANDARD",
+                version=1,
+                currency=store.currency,
+                prices_include_tax=True,
+                valid_from=utc_now(),
+                valid_to=None,
+                items=[
+                    PriceBookProductInput(
+                        product_id=product_id,
+                        price_minor=request.price_minor,
+                    )
+                ],
+            ),
+        )
+        return
+    item = await session.scalar(
+        select(PriceBookItem).where(
+            PriceBookItem.price_book_id == price_book.id,
+            PriceBookItem.product_id == product_id,
+        )
+    )
+    if item is not None:
+        item.price_minor = request.price_minor
+    else:
+        session.add(
+            PriceBookItem(
+                price_book_id=price_book.id,
+                product_id=product_id,
+                price_minor=request.price_minor,
+            )
+        )
+    await session.flush()
+    _audit_catalog_change(
+        session,
+        principal,
+        store_id=store.id,
+        action="pricing.price_book.upserted",
+        target_type="price_book",
+        target_id=price_book.id,
+        after={"product_id": str(product_id), "price_minor": request.price_minor},
+    )
+
+
+async def list_admin_option_groups(
+    session: AsyncSession, principal: Principal, store_id: UUID
+) -> list[AdminOptionGroupResponse]:
+    await get_store_for_tenant(session, principal, store_id)
+    groups = list(
+        (
+            await session.scalars(
+                select(OptionGroup)
+                .where(
+                    OptionGroup.tenant_id == principal.tenant_id,
+                    OptionGroup.store_id == store_id,
+                    OptionGroup.archived_at.is_(None),
+                )
+                .order_by(OptionGroup.sort_order, OptionGroup.code)
+            )
+        ).all()
+    )
+    group_ids = [group.id for group in groups]
+    group_translations: dict[UUID, dict[str, str]] = defaultdict(dict)
+    value_translations: dict[UUID, dict[str, str]] = defaultdict(dict)
+    values_by_group: dict[UUID, list[OptionValue]] = defaultdict(list)
+    if group_ids:
+        for row in (
+            await session.scalars(
+                select(OptionGroupTranslation).where(
+                    OptionGroupTranslation.option_group_id.in_(group_ids)
+                )
+            )
+        ).all():
+            group_translations[row.option_group_id][row.locale] = row.name
+        values = list(
+            (
+                await session.scalars(
+                    select(OptionValue)
+                    .where(
+                        OptionValue.option_group_id.in_(group_ids),
+                        OptionValue.archived_at.is_(None),
+                    )
+                    .order_by(OptionValue.sort_order, OptionValue.code)
+                )
+            ).all()
+        )
+        for value in values:
+            values_by_group[value.option_group_id].append(value)
+        value_ids = [value.id for value in values]
+        if value_ids:
+            for row in (
+                await session.scalars(
+                    select(OptionValueTranslation).where(
+                        OptionValueTranslation.option_value_id.in_(value_ids)
+                    )
+                )
+            ).all():
+                value_translations[row.option_value_id][row.locale] = row.name
+    return [
+        AdminOptionGroupResponse(
+            id=group.id,
+            store_id=group.store_id,
+            code=group.code,
+            translations=group_translations[group.id],
+            sort_order=group.sort_order,
+            active=group.active,
+            values=[
+                AdminOptionValueResponse(
+                    id=value.id,
+                    code=value.code,
+                    translations=value_translations[value.id],
+                    sort_order=value.sort_order,
+                    active=value.active,
+                )
+                for value in values_by_group[group.id]
+            ],
+        )
+        for group in groups
+    ]
+
+
+async def _get_scoped_option_group(
+    session: AsyncSession, principal: Principal, store_id: UUID, group_id: UUID
+) -> OptionGroup:
+    await get_store_for_tenant(session, principal, store_id)
+    group = await session.scalar(
+        select(OptionGroup).where(
+            OptionGroup.id == group_id,
+            OptionGroup.tenant_id == principal.tenant_id,
+            OptionGroup.store_id == store_id,
+            OptionGroup.archived_at.is_(None),
+        )
+    )
+    if group is None:
+        raise NotFoundError("option_group", str(group_id))
+    return group
+
+
+async def update_option_group(
+    session: AsyncSession,
+    principal: Principal,
+    store_id: UUID,
+    group_id: UUID,
+    request: UpdateOptionGroupRequest,
+) -> OptionGroup:
+    group = await _get_scoped_option_group(session, principal, store_id, group_id)
+    before = {"active": group.active, "sort_order": group.sort_order}
+    if request.active is not None:
+        group.active = request.active
+    if request.sort_order is not None:
+        group.sort_order = request.sort_order
+    if request.translations:
+        for locale, name in request.translations.items():
+            row = await session.scalar(
+                select(OptionGroupTranslation).where(
+                    OptionGroupTranslation.option_group_id == group.id,
+                    OptionGroupTranslation.locale == locale,
+                )
+            )
+            if row is None:
+                session.add(
+                    OptionGroupTranslation(
+                        option_group_id=group.id, locale=locale, name=name
+                    )
+                )
+            else:
+                row.name = name
+    await session.flush()
+    _audit_catalog_change(
+        session,
+        principal,
+        store_id=store_id,
+        action="catalog.option_group.updated",
+        target_type="option_group",
+        target_id=group.id,
+        before=before,
+        after={"active": group.active, "sort_order": group.sort_order},
+    )
+    return group
+
+
+async def delete_option_group(
+    session: AsyncSession,
+    principal: Principal,
+    store_id: UUID,
+    group_id: UUID,
+) -> None:
+    group = await _get_scoped_option_group(session, principal, store_id, group_id)
+    product_ids = list(
+        (
+            await session.scalars(
+                select(ProductOptionRule.product_id).where(
+                    ProductOptionRule.option_group_id == group.id
+                )
+            )
+        ).all()
+    )
+    await session.execute(
+        delete(ProductOptionRule).where(ProductOptionRule.option_group_id == group.id)
+    )
+    archived_at = utc_now()
+    await session.execute(
+        update(OptionValue)
+        .where(OptionValue.option_group_id == group.id)
+        .values(active=False, archived_at=archived_at)
+    )
+    original_code = group.code
+    group.code = f"{group.code[:60]}-deleted-{str(group.id)[:8]}"
+    group.active = False
+    group.archived_at = archived_at
+    await session.flush()
+    _audit_catalog_change(
+        session,
+        principal,
+        store_id=store_id,
+        action="catalog.option_group.deleted",
+        target_type="option_group",
+        target_id=group.id,
+        before={"code": original_code, "product_ids": [str(value) for value in product_ids]},
+        after={"archived_at": archived_at.isoformat()},
+    )
+
+
+async def create_option_value(
+    session: AsyncSession,
+    principal: Principal,
+    store_id: UUID,
+    group_id: UUID,
+    request: CreateOptionValueInput,
+) -> OptionValue:
+    group = await _get_scoped_option_group(session, principal, store_id, group_id)
+    value = OptionValue(
+        option_group_id=group.id,
+        code=normalize_code(request.code),
+        sort_order=request.sort_order,
+        active=request.active,
+    )
+    session.add(value)
+    try:
+        await session.flush()
+    except IntegrityError as exc:
+        raise ConflictError("option_value_exists", "The option value code already exists") from exc
+    session.add_all(
+        OptionValueTranslation(option_value_id=value.id, locale=locale, name=name)
+        for locale, name in request.translations.items()
+    )
+    await session.flush()
+    return value
+
+
+async def update_option_value(
+    session: AsyncSession,
+    principal: Principal,
+    store_id: UUID,
+    group_id: UUID,
+    value_id: UUID,
+    request: UpdateOptionValueRequest,
+) -> OptionValue:
+    await _get_scoped_option_group(session, principal, store_id, group_id)
+    value = await session.scalar(
+        select(OptionValue).where(
+            OptionValue.id == value_id, OptionValue.option_group_id == group_id
+        )
+    )
+    if value is None:
+        raise NotFoundError("option_value", str(value_id))
+    if request.active is not None:
+        value.active = request.active
+    if request.sort_order is not None:
+        value.sort_order = request.sort_order
+    if request.translations:
+        for locale, name in request.translations.items():
+            row = await session.scalar(
+                select(OptionValueTranslation).where(
+                    OptionValueTranslation.option_value_id == value.id,
+                    OptionValueTranslation.locale == locale,
+                )
+            )
+            if row is None:
+                session.add(
+                    OptionValueTranslation(
+                        option_value_id=value.id, locale=locale, name=name
+                    )
+                )
+            else:
+                row.name = name
+    await session.flush()
+    return value
+
+
+async def set_product_option_price(
+    session: AsyncSession,
+    principal: Principal,
+    store_id: UUID,
+    product_id: UUID,
+    value_id: UUID,
+    request: SetProductOptionPriceRequest,
+) -> None:
+    await get_store_for_tenant(session, principal, store_id)
+    price_book = await get_current_price_book(session, store_id)
+    allowed = await session.scalar(
+        select(OptionValue.id)
+        .join(ProductOptionRule, ProductOptionRule.option_group_id == OptionValue.option_group_id)
+        .join(OptionGroup, OptionGroup.id == OptionValue.option_group_id)
+        .join(
+            StoreProductAvailability,
+            StoreProductAvailability.product_id == ProductOptionRule.product_id,
+        )
+        .where(
+            ProductOptionRule.product_id == product_id,
+            OptionValue.id == value_id,
+            OptionGroup.store_id == store_id,
+            StoreProductAvailability.store_id == store_id,
+        )
+    )
+    if allowed is None:
+        raise NotFoundError("product_option_value", str(value_id))
+    row = await session.scalar(
+        select(PriceBookOptionItem).where(
+            PriceBookOptionItem.price_book_id == price_book.id,
+            PriceBookOptionItem.product_id == product_id,
+            PriceBookOptionItem.option_value_id == value_id,
+        )
+    )
+    if row is None:
+        session.add(
+            PriceBookOptionItem(
+                price_book_id=price_book.id,
+                product_id=product_id,
+                option_value_id=value_id,
+                price_delta_minor=request.price_delta_minor,
+            )
+        )
+    else:
+        row.price_delta_minor = request.price_delta_minor
+    await session.flush()
+
+
+async def list_admin_categories(
+    session: AsyncSession,
+    principal: Principal,
+    store_id: UUID,
+) -> list[AdminCategoryResponse]:
+    store = await get_store_for_tenant(session, principal, store_id)
+    categories = (
+        await session.scalars(
+            select(Category)
+            .where(Category.tenant_id == principal.tenant_id, Category.archived_at.is_(None))
+            .order_by(Category.sort_order, Category.code)
+        )
+    ).all()
+    category_ids = [category.id for category in categories]
+    names: dict[UUID, str] = {}
+    if category_ids:
+        rows = (
+            await session.scalars(
+                select(CategoryTranslation).where(
+                    CategoryTranslation.category_id.in_(category_ids),
+                    CategoryTranslation.locale.in_({store.locale, "nl-NL", "en"}),
+                )
+            )
+        ).all()
+        for locale in (store.locale, "nl-NL", "en"):
+            for row in rows:
+                if row.locale == locale and row.category_id not in names:
+                    names[row.category_id] = row.name
+    return [
+        AdminCategoryResponse(
+            id=category.id,
+            code=category.code,
+            name=names.get(category.id, category.code),
+            sort_order=category.sort_order,
+            active=category.active,
+        )
+        for category in categories
+    ]
+
+
+async def delete_product(
+    session: AsyncSession,
+    principal: Principal,
+    store_id: UUID,
+    product_id: UUID,
+) -> Product:
+    store = await get_store_for_tenant(session, principal, store_id)
+    product = await session.scalar(
+        select(Product).where(Product.id == product_id, Product.tenant_id == principal.tenant_id)
+    )
+    if product is None or product.archived_at is not None:
+        raise NotFoundError("product", str(product_id))
+    product.archived_at = utc_now()
+    product.active = False
+    await session.execute(
+        delete(StoreProductAvailability).where(
+            StoreProductAvailability.store_id == store.id,
+            StoreProductAvailability.product_id == product_id,
+        )
+    )
+    await session.flush()
+    _audit_catalog_change(
+        session,
+        principal,
+        store_id=store.id,
+        action="catalog.product.deleted",
+        target_type="product",
+        target_id=product.id,
+        after={
+            "sku": product.sku,
+            "archived_at": product.archived_at.isoformat() if product.archived_at else None,
+        },
+    )
+    return product

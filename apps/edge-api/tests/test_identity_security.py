@@ -15,7 +15,12 @@ from app.bootstrap import BootstrapResult, bootstrap_store
 from app.core.config import Settings
 from app.core.enums import ActorType
 from app.core.errors import ConflictError
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core.security import (
+    create_access_token,
+    hash_password,
+    verify_device_credential,
+    verify_password,
+)
 from app.main import create_app
 from app.modules.audit.models import AuditLog
 from app.modules.identity.models import (
@@ -29,6 +34,8 @@ from app.modules.identity.models import (
 from app.modules.organization.models import (
     FulfillmentEndpoint,
     KioskDevice,
+    KitchenStation,
+    PaymentTerminal,
     Store,
     StoreOperatingPolicy,
     Tenant,
@@ -512,8 +519,10 @@ async def test_identity_and_store_policy_mutations_append_redacted_user_audits(
         "accepting_orders": True,
         "max_open_tickets": 50,
         "kds_heartbeat_seconds": 30,
-        "printer_fallback_enabled": False,
-        "version": 2,
+            "printer_fallback_enabled": False,
+            "takeaway_fee_enabled": False,
+            "takeaway_fee_minor": 0,
+            "version": 2,
     }
 
     serialized_audits = json.dumps(
@@ -777,3 +786,295 @@ async def test_organization_device_credentials_and_disablement(
         headers=endpoint_headers,
     )
     assert disabled_tenant_endpoint.status_code == 401
+
+
+@pytest.mark.anyio
+async def test_store_creation_provisions_devices_and_rotates_credentials(
+    security_harness: SecurityHarness,
+) -> None:
+    """A store created via the admin API is a usable, independent fulfilment unit.
+
+    It must ship with its own kiosk, default kitchen station, KDS end-point and
+    (mock) payment terminal, and rotate its secrets on an explicit reset.
+    """
+    harness = security_harness
+    token = await _login(harness)
+
+    created = await harness.client.post(
+        "/api/v1/admin/organization/stores",
+        headers=_bearer(token),
+        json={
+            "name": "Rotterdam Central",
+            "city": "Rotterdam",
+            "manager_display_name": "Rik Manager",
+            "manager_username": "rik-admin",
+            "manager_password": "rik-rotterdam-password-123",
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    dev = body["device_credentials"]
+    new_store_id = UUID(body["store"]["id"])
+    assert dev["kiosk_id"] is not None
+    assert dev["kiosk_key"] and len(dev["kiosk_key"]) >= 24
+    assert dev["endpoint_id"] is not None
+    assert dev["endpoint_key"] and len(dev["endpoint_key"]) >= 24
+    assert dev["station_id"] is not None
+    assert dev["terminal_id"] is not None
+
+    async with harness.database.session_factory() as session, session.begin():
+        store = await session.get(Store, new_store_id)
+        assert store is not None
+        kiosk = await session.scalar(
+            select(KioskDevice).where(KioskDevice.store_id == store.id)
+        )
+        station = await session.scalar(
+            select(KitchenStation).where(
+                KitchenStation.store_id == store.id,
+                KitchenStation.is_default,
+            )
+        )
+        endpoint = await session.scalar(
+            select(FulfillmentEndpoint)
+            .join(KitchenStation, KitchenStation.id == FulfillmentEndpoint.station_id)
+            .where(KitchenStation.store_id == store.id)
+        )
+        terminal = await session.scalar(
+            select(PaymentTerminal)
+            .join(KioskDevice, KioskDevice.id == PaymentTerminal.kiosk_id)
+            .where(KioskDevice.store_id == store.id)
+        )
+        assert kiosk is not None
+        assert station is not None
+        assert endpoint is not None
+        assert terminal is not None
+        assert verify_device_credential(dev["kiosk_key"], kiosk.credential_hash)
+        assert verify_device_credential(dev["endpoint_key"], endpoint.credential_hash)
+
+    # A plain read never returns secrets.
+    view = await harness.client.get(
+        f"/api/v1/admin/organization/stores/{new_store_id}/device-credentials",
+        headers=_bearer(token),
+    )
+    assert view.status_code == 200
+    view_body = view.json()
+    assert view_body["kiosk_id"] == dev["kiosk_id"]
+    assert view_body["kiosk_key"] is None
+    assert view_body["endpoint_key"] is None
+
+    # Reset rotates both device secrets and returns them exactly once.
+    reset = await harness.client.post(
+        f"/api/v1/admin/organization/stores/{new_store_id}/device-credentials/reset",
+        headers=_bearer(token),
+    )
+    assert reset.status_code == 200, reset.text
+    rotated = reset.json()
+    assert rotated["kiosk_key"] and rotated["kiosk_key"] != dev["kiosk_key"]
+    assert rotated["endpoint_key"] and rotated["endpoint_key"] != dev["endpoint_key"]
+
+    async with harness.database.session_factory() as session:
+        kiosk = await session.scalar(
+            select(KioskDevice).where(KioskDevice.store_id == new_store_id)
+        )
+        assert kiosk is not None
+        assert verify_device_credential(rotated["kiosk_key"], kiosk.credential_hash)
+        assert not verify_device_credential(dev["kiosk_key"], kiosk.credential_hash)
+
+    manager_token = await _login(
+        harness,
+        username="rik-admin",
+        password="rik-rotterdam-password-123",
+    )
+    own_policy = await harness.client.patch(
+        f"/api/v1/admin/organization/stores/{new_store_id}/policy",
+        headers=_bearer(manager_token),
+        json={
+            "accepting_orders": False,
+            "max_open_tickets": 50,
+            "kds_heartbeat_seconds": 30,
+            "printer_fallback_enabled": False,
+            "takeaway_fee_enabled": True,
+            "takeaway_fee_minor": 50,
+            "expected_version": 1,
+        },
+    )
+    assert own_policy.status_code == 200, own_policy.text
+    assert own_policy.json()["takeaway_fee_minor"] == 50
+
+    foreign_policy = await harness.client.patch(
+        f"/api/v1/admin/organization/stores/{harness.bootstrap.store_id}/policy",
+        headers=_bearer(manager_token),
+        json={
+            "accepting_orders": False,
+            "max_open_tickets": 50,
+            "kds_heartbeat_seconds": 30,
+            "printer_fallback_enabled": False,
+            "takeaway_fee_enabled": True,
+            "takeaway_fee_minor": 999,
+            "expected_version": 1,
+        },
+    )
+    assert foreign_policy.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_kds_board_config_read_write_and_scope(
+    security_harness: SecurityHarness,
+) -> None:
+    """Each store's KDS board is configurable and only admins/that store's manager may edit it."""
+    harness = security_harness
+    owner_token = await _login(harness)
+    store_id = harness.bootstrap.store_id
+
+    view = await harness.client.get(
+        f"/api/v1/admin/organization/stores/{store_id}/kds-board",
+        headers=_bearer(owner_token),
+    )
+    assert view.status_code == 200, view.text
+    board = view.json()
+    assert board["store_id"] == store_id
+    assert board["station_id"]
+    assert board["name"]  # default "Main Bar"
+    assert board["display_title"] is None
+    assert board["enabled"] is True
+    assert board["version"] == 1
+
+    update = await harness.client.patch(
+        f"/api/v1/admin/organization/stores/{store_id}/kds-board",
+        headers=_bearer(owner_token),
+        json={
+            "name": "Bar Board",
+            "display_title": "Keuken",
+            "enabled": True,
+            "expected_version": 1,
+        },
+    )
+    assert update.status_code == 200, update.text
+    updated = update.json()
+    assert updated["name"] == "Bar Board"
+    assert updated["display_title"] == "Keuken"
+    assert updated["enabled"] is True
+    assert updated["version"] == 2
+
+    stale = await harness.client.patch(
+        f"/api/v1/admin/organization/stores/{store_id}/kds-board",
+        headers=_bearer(owner_token),
+        json={"name": "Stale", "expected_version": 1},
+    )
+    assert stale.status_code == 409
+
+    # A staff user (no organization:write) is forbidden.
+    await _create_staff_user(harness, owner_token)
+    staff_token = await _login(
+        harness, username="barista", password="barista-password-123"
+    )
+    denied = await harness.client.get(
+        f"/api/v1/admin/organization/stores/{store_id}/kds-board",
+        headers=_bearer(staff_token),
+    )
+    assert denied.status_code == 403
+
+
+@pytest.mark.anyio
+async def test_store_creation_creates_manager_account_and_connection_view(
+    security_harness: SecurityHarness,
+) -> None:
+    """Creating a store provisions a store-manager account and returns a connection view."""
+    harness = security_harness
+    owner_token = await _login(harness)
+
+    created = await harness.client.post(
+        "/api/v1/admin/organization/stores",
+        headers=_bearer(owner_token),
+        json={
+            "name": "Haarlem Shop",
+            "city": "Haarlem",
+            "manager_display_name": "Hanne Manager",
+            "manager_username": "hanne-manager",
+            "manager_password": "hanne-haarlem-password-123",
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    new_store_id = UUID(body["store"]["id"])
+    account = body["manager_account"]
+    assert account["username"] == "hanne-manager"
+    assert account["display_name"] == "Hanne Manager"
+    assert account["active"] is True
+    assert body["tenant_code"] == "acme-nl"
+    assert body["device_credentials"]["endpoint_id"]
+
+    # The created manager can log in and sees only the new store.
+    manager_token = await _login(
+        harness,
+        username="hanne-manager",
+        password="hanne-haarlem-password-123",
+    )
+    listed = await harness.client.get(
+        "/api/v1/admin/organization/stores",
+        headers=_bearer(manager_token),
+    )
+    assert listed.status_code == 200
+    assert [row["store"]["id"] for row in listed.json()] == [str(new_store_id)]
+
+    # The connection view bundles tenant + devices + managers (no secret keys).
+    view = await harness.client.get(
+        f"/api/v1/admin/organization/stores/{new_store_id}/connection",
+        headers=_bearer(owner_token),
+    )
+    assert view.status_code == 200, view.text
+    connection = view.json()
+    assert connection["tenant_code"] == "acme-nl"
+    assert connection["endpoint_id"] == body["device_credentials"]["endpoint_id"]
+    assert connection["kiosk_key"] is None
+    assert connection["endpoint_key"] is None
+    assert any(m["username"] == "hanne-manager" for m in connection["managers"])
+
+    # The store manager can read their own store's connection view too.
+    mgr_view = await harness.client.get(
+        f"/api/v1/admin/organization/stores/{new_store_id}/connection",
+        headers=_bearer(manager_token),
+    )
+    assert mgr_view.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_refresh_token_mints_new_access_and_rotates(
+    security_harness: SecurityHarness,
+) -> None:
+    harness = security_harness
+
+    login_resp = await harness.client.post(
+        "/api/v1/auth/token",
+        json={
+            "tenant_code": "acme-nl",
+            "username": "owner",
+            "password": "correct horse battery staple",
+        },
+    )
+    assert login_resp.status_code == 200, login_resp.text
+    first = login_resp.json()
+    assert first["refresh_token"] and first["access_token"]
+    refresh1 = first["refresh_token"]
+
+    refresh_resp = await harness.client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": refresh1},
+    )
+    assert refresh_resp.status_code == 200, refresh_resp.text
+    second = refresh_resp.json()
+    assert second["access_token"]
+    assert second["refresh_token"]
+    assert second["access_token"] != first["access_token"]
+
+    # The freshly minted access token is usable.
+    me = await harness.client.get("/api/v1/auth/me", headers=_bearer(second["access_token"]))
+    assert me.status_code == 200
+    assert me.json()["user_id"]
+
+    # An invalid / revoked-style refresh token is rejected.
+    bad = await harness.client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": "not-a-real-token"},
+    )
+    assert bad.status_code == 401

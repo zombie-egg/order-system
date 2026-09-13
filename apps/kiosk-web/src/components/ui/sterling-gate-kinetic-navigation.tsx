@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { CustomEase } from 'gsap/CustomEase';
+import { InfiniteGridBackdrop } from './the-infinite-grid';
 
 if (typeof window !== 'undefined') {
   gsap.registerPlugin(CustomEase);
@@ -44,7 +45,6 @@ export function SterlingGateKineticNavigation({
     }
     const overlay = containerRef.current.querySelector('.kinetic-overlay');
     const panel = containerRef.current.querySelector('.kinetic-menu-panel');
-    const layers = containerRef.current.querySelectorAll('.kinetic-backdrop-layer');
     const links = containerRef.current.querySelectorAll('.kinetic-menu-item');
     const closeButton = containerRef.current.querySelector('.kinetic-close-button');
 
@@ -55,7 +55,6 @@ export function SterlingGateKineticNavigation({
           .set(overlay, { display: 'block' })
           .set(panel, { xPercent: 0 })
           .fromTo(overlay, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.2 })
-          .fromTo(layers, { xPercent: 104 }, { xPercent: 0, stagger: 0.1, duration: 0.55 }, '<')
           .fromTo(
             links,
             { yPercent: 135, rotation: 7 },
@@ -91,28 +90,7 @@ export function SterlingGateKineticNavigation({
           onClick={onClose}
         />
         <section className="kinetic-menu-panel" aria-label={language === 'zh-CN' ? '选择饮品分类' : 'Drankcategorie kiezen'}>
-          <div className="kinetic-menu-background" aria-hidden="true">
-            <div className="kinetic-backdrop-layer kinetic-layer-one" />
-            <div className="kinetic-backdrop-layer kinetic-layer-two" />
-            <div className="kinetic-backdrop-layer kinetic-layer-three" />
-            <div className="kinetic-shapes">
-              <svg className="kinetic-shape" viewBox="0 0 400 400">
-                <circle className="shape-element" cx="76" cy="82" r="38" />
-                <circle className="shape-element" cx="276" cy="225" r="78" />
-                <circle className="shape-element" cx="352" cy="75" r="26" />
-              </svg>
-              <svg className="kinetic-shape" viewBox="0 0 400 400">
-                <circle className="shape-element" cx="76" cy="265" r="62" />
-                <circle className="shape-element" cx="236" cy="128" r="40" />
-                <circle className="shape-element" cx="348" cy="310" r="76" />
-              </svg>
-              <svg className="kinetic-shape" viewBox="0 0 400 400">
-                <circle className="shape-element" cx="75" cy="75" r="12" />
-                <circle className="shape-element" cx="205" cy="145" r="18" />
-                <circle className="shape-element" cx="318" cy="284" r="14" />
-              </svg>
-            </div>
-          </div>
+          <InfiniteGridBackdrop idPrefix="kiosk-menu-grid" />
 
           <header className="kinetic-menu-header">
             <div className="kinetic-brand">SIP PILOT <span>· {language === 'zh-CN' ? '自助点单' : 'ZELFBESTELLEN'}</span></div>

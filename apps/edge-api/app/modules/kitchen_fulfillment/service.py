@@ -17,7 +17,7 @@ from app.core.enums import (
     ReviewStatus,
 )
 from app.core.errors import ConflictError, NotFoundError
-from app.core.principals import FulfillmentEndpointPrincipal, Principal
+from app.core.principals import FulfillmentEndpointPrincipal
 from app.core.sensitive_data import contains_sensitive_card_data
 from app.modules.audit.service import add_audit_log, add_outbox_event
 from app.modules.kitchen_fulfillment.models import (
@@ -30,7 +30,7 @@ from app.modules.kitchen_fulfillment.schemas import (
     FulfillmentTicketResponse,
 )
 from app.modules.manual_review.models import ManualReviewCase
-from app.modules.ordering.models import OrderStatusEvent, SalesOrder
+from app.modules.ordering.models import OrderItemOption, OrderStatusEvent, SalesOrder
 from app.modules.organization.models import FulfillmentEndpoint, KitchenStation
 from app.modules.payments.models import Refund
 from app.persistence.base import utc_now
@@ -100,12 +100,10 @@ async def heartbeat_endpoint(
 async def list_station_queue(
     session: AsyncSession,
     endpoint: FulfillmentEndpointPrincipal,
-    principal: Principal,
 ) -> list[FulfillmentTicketResponse]:
     station = await session.get(KitchenStation, endpoint.station_id)
     if station is None or not station.active:
         raise NotFoundError("kitchen_station", str(endpoint.station_id))
-    principal.require_store(station.store_id)
     tickets = list(
         (
             await session.scalars(
@@ -137,7 +135,6 @@ async def list_station_queue(
 async def transition_ticket(
     session: AsyncSession,
     endpoint: FulfillmentEndpointPrincipal,
-    principal: Principal,
     *,
     ticket_id: UUID,
     to_status: FulfillmentStatus,
@@ -158,7 +155,6 @@ async def transition_ticket(
     station = await session.get(KitchenStation, ticket.station_id)
     if station is None:
         raise NotFoundError("kitchen_station", str(ticket.station_id))
-    principal.require_store(station.store_id)
     if ticket.version != expected_version:
         raise ConflictError(
             "stale_version",
@@ -211,16 +207,16 @@ async def transition_ticket(
     ticket.status = to_status
     ticket.version += 1
     if to_status == FulfillmentStatus.ACKNOWLEDGED:
-        ticket.acknowledged_by = principal.user_id
+        ticket.acknowledged_by = None
         ticket.acknowledged_at = now
     elif to_status == FulfillmentStatus.PREPARING:
-        ticket.started_by = principal.user_id
+        ticket.started_by = None
         ticket.started_at = now
     elif to_status == FulfillmentStatus.READY:
-        ticket.ready_by = principal.user_id
+        ticket.ready_by = None
         ticket.ready_at = now
     elif to_status == FulfillmentStatus.COLLECTED:
-        ticket.collected_by = principal.user_id
+        ticket.collected_by = None
         ticket.collected_at = now
     elif to_status == FulfillmentStatus.UNFULFILLABLE:
         ticket.failure_reason_code = failure_reason_code
@@ -237,8 +233,8 @@ async def transition_ticket(
             sequence_number=int(next_sequence or 1),
             from_status=previous_status,
             to_status=to_status,
-            actor_type=ActorType.USER,
-            actor_user_id=principal.user_id,
+            actor_type=ActorType.SYSTEM,
+            actor_user_id=None,
             actor_device_id=endpoint.endpoint_id,
             reason_code=failure_reason_code.value if failure_reason_code else None,
             metadata_json={"failure_detail": failure_detail} if failure_detail else {},
@@ -249,8 +245,8 @@ async def transition_ticket(
         session,
         tenant_id=order.tenant_id,
         store_id=order.store_id,
-        actor_type=ActorType.USER,
-        actor_user_id=principal.user_id,
+        actor_type=ActorType.SYSTEM,
+        actor_user_id=None,
         actor_device_id=endpoint.endpoint_id,
         action="fulfillment.ticket.status_changed",
         target_type="fulfillment_ticket",
@@ -297,8 +293,8 @@ async def transition_ticket(
                 session,
                 tenant_id=order.tenant_id,
                 store_id=order.store_id,
-                actor_type=ActorType.USER,
-                actor_user_id=principal.user_id,
+                actor_type=ActorType.SYSTEM,
+                actor_user_id=None,
                 actor_device_id=endpoint.endpoint_id,
                 action="manual_review.opened",
                 target_type="manual_review_case",
@@ -329,7 +325,7 @@ async def transition_ticket(
 
     await session.flush()
     if to_status == FulfillmentStatus.COLLECTED:
-        await close_order_if_complete(session, order, actor_user_id=principal.user_id)
+        await close_order_if_complete(session, order, actor_user_id=None)
     responses = await build_ticket_responses(session, [ticket])
     return responses[0]
 
@@ -436,6 +432,29 @@ async def build_ticket_responses(
     items_by_ticket: dict[UUID, list[FulfillmentTicketItem]] = defaultdict(list)
     for item in items:
         items_by_ticket[item.ticket_id].append(item)
+    orders = {
+        order.id: order
+        for order in (
+            await session.scalars(
+                select(SalesOrder).where(
+                    SalesOrder.id.in_([ticket.order_id for ticket in tickets])
+                )
+            )
+        ).all()
+    }
+    options_by_item: dict[UUID, list[str]] = defaultdict(list)
+    item_ids = [item.order_item_id for item in items]
+    if item_ids:
+        for option in (
+            await session.scalars(
+                select(OrderItemOption)
+                .where(OrderItemOption.order_item_id.in_(item_ids))
+                .order_by(OrderItemOption.order_item_id, OrderItemOption.option_number)
+            )
+        ).all():
+            options_by_item[option.order_item_id].append(
+                f"{option.group_name_snapshot}: {option.name_snapshot}"
+            )
     return [
         FulfillmentTicketResponse(
             id=ticket.id,
@@ -446,6 +465,7 @@ async def build_ticket_responses(
             display_number=ticket.display_number,
             status=ticket.status,
             priority=ticket.priority,
+            fulfillment_type=orders[ticket.order_id].fulfillment_type,
             failure_reason_code=ticket.failure_reason_code,
             failure_detail=ticket.failure_detail,
             acknowledged_at=ticket.acknowledged_at,
@@ -460,6 +480,7 @@ async def build_ticket_responses(
                     name=item.name_snapshot,
                     preparation_snapshot=item.preparation_snapshot,
                     allergen_snapshot=item.allergen_snapshot,
+                    options=options_by_item[item.order_item_id],
                 )
                 for item in items_by_ticket[ticket.id]
             ],

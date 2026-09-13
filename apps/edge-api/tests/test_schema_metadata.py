@@ -160,7 +160,7 @@ def test_uuid_money_timestamp_and_enum_storage_contracts() -> None:
                 assert enum_class is not None, qualified_name
                 assert column.type.enums == [member.value for member in enum_class], qualified_name
 
-    assert enum_count == 31
+    assert enum_count == 34
 
 
 @pytest.mark.parametrize("dialect", SUPPORTED_DIALECTS)

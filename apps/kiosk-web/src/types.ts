@@ -12,12 +12,16 @@ export type PaymentStatus =
   | 'REFUNDED';
 
 export type OrderStatus = 'DRAFT' | 'CONFIRMED' | 'CLOSED' | 'CANCELLED';
+export type FulfillmentType = 'DINE_IN' | 'TAKEAWAY';
 
 export interface CatalogOptionValue {
   id: string;
   code: string;
   name: string;
   price_delta_minor: number;
+  active?: boolean;
+  sort_order?: number;
+  is_default?: boolean;
 }
 
 export interface CatalogOptionGroup {
@@ -27,6 +31,8 @@ export interface CatalogOptionGroup {
   minimum_selections: number;
   maximum_selections: number;
   values: CatalogOptionValue[];
+  active?: boolean;
+  sort_order?: number;
 }
 
 export interface CatalogProduct {
@@ -51,6 +57,9 @@ export interface CatalogCategory {
 
 export interface StoreCatalog {
   store_id: string;
+  store_name: string;
+  merchant_name: string;
+  logo_url: string | null;
   locale: string;
   currency: string;
   price_book_id: string;
@@ -62,6 +71,8 @@ export interface KioskStoreStatus {
   accepting_orders: boolean;
   currency: string;
   locale: string;
+  takeaway_fee_enabled: boolean;
+  takeaway_fee_minor: number;
 }
 
 export interface KioskHeartbeat {
@@ -113,6 +124,8 @@ export interface Quote {
   currency: string;
   locale: string;
   prices_include_tax: boolean;
+  fulfillment_type: FulfillmentType;
+  packaging_fee_minor: number;
   subtotal_minor: number;
   discount_minor: number;
   net_minor: number;
@@ -159,6 +172,8 @@ export interface KioskOrder {
   currency: string;
   locale: string;
   prices_include_tax: boolean;
+  fulfillment_type: FulfillmentType;
+  packaging_fee_minor: number;
   subtotal_minor: number;
   discount_minor: number;
   net_minor: number;

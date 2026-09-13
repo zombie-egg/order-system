@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, model_validator
 
 from app.core.api_models import StrictRequestModel
-from app.core.enums import FulfillmentFailureReason, FulfillmentStatus
+from app.core.enums import FulfillmentFailureReason, FulfillmentStatus, FulfillmentType
 from app.core.sensitive_data import contains_sensitive_card_data
 
 
@@ -24,6 +24,7 @@ class FulfillmentTicketItemResponse(BaseModel):
     name: str
     preparation_snapshot: dict[str, Any]
     allergen_snapshot: dict[str, Any]
+    options: list[str] = Field(default_factory=list)
 
 
 class FulfillmentTicketResponse(BaseModel):
@@ -35,6 +36,7 @@ class FulfillmentTicketResponse(BaseModel):
     display_number: str
     status: FulfillmentStatus
     priority: int
+    fulfillment_type: FulfillmentType
     failure_reason_code: FulfillmentFailureReason | None
     failure_detail: str | None
     acknowledged_at: datetime | None

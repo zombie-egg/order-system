@@ -26,6 +26,8 @@ from app.core.errors import (
 from app.core.principals import Principal
 from app.core.security import (
     create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
     hash_password,
     password_hash_needs_rehash,
     verify_password,
@@ -146,9 +148,9 @@ async def authenticate(
     settings: Settings,
     request: LoginRequest,
     password_limiter: PasswordVerifier,
-) -> tuple[str, datetime]:
+) -> tuple[str, datetime, str]:
     principal_key = _login_principal_key(settings, request.tenant_code, request.username)
-    result: tuple[str, datetime] | None = None
+    result: tuple[str, datetime, str] | None = None
     invalid_credentials = False
     retry_after_seconds: int | None = None
 
@@ -224,7 +226,7 @@ async def authenticate(
                 if password_hash_needs_rehash(user.password_hash):
                     user.password_hash = await password_limiter.hash(request.password)
                 user.last_login_at = now
-                result = create_access_token(
+                access_token, expires_at = create_access_token(
                     subject=str(user.id),
                     tenant_id=str(user.tenant_id),
                     token_version=user.token_version,
@@ -234,6 +236,16 @@ async def authenticate(
                     audience=settings.jwt_audience,
                     lifetime=timedelta(minutes=settings.access_token_minutes),
                 )
+                refresh_token, _ = create_refresh_token(
+                    subject=str(user.id),
+                    tenant_id=str(user.tenant_id),
+                    token_version=user.token_version,
+                    secret=settings.jwt_secret,
+                    issuer=settings.jwt_issuer,
+                    audience=settings.jwt_audience,
+                    lifetime=timedelta(minutes=settings.refresh_token_minutes),
+                )
+                result = (access_token, expires_at, refresh_token)
 
     if retry_after_seconds is not None:
         if isinstance(password_limiter, PasswordVerificationLimiter):
@@ -248,6 +260,93 @@ async def authenticate(
             authenticate_header=None,
         )
     return result
+
+
+async def refresh_access_token(
+    database: Database,
+    settings: Settings,
+    refresh_token: str,
+) -> tuple[str, datetime, str]:
+    """Validate a stateless refresh JWT and mint a fresh access + refresh token pair."""
+    try:
+        claims = decode_refresh_token(
+            refresh_token,
+            secret=settings.jwt_secret,
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
+        )
+    except Exception as exc:
+        raise UnauthorizedError(
+            "The refresh token is invalid or expired",
+            authenticate_header=None,
+        ) from exc
+    user_id: UUID
+    tenant_id: UUID
+    try:
+        user_id = UUID(claims.subject)
+        tenant_id = UUID(claims.tenant_id)
+    except ValueError as exc:
+        raise UnauthorizedError(
+            "The refresh token is invalid",
+            authenticate_header=None,
+        ) from exc
+
+    async with database.session_factory() as session, session.begin():
+        user = await session.scalar(
+            select(UserAccount)
+            .join(Tenant, Tenant.id == UserAccount.tenant_id)
+            .where(
+                UserAccount.id == user_id,
+                UserAccount.tenant_id == tenant_id,
+                UserAccount.active,
+                Tenant.active,
+            )
+        )
+        if user is None or user.token_version != claims.token_version:
+            raise UnauthorizedError(
+                "The account is no longer available",
+                authenticate_header=None,
+            )
+        rows = (
+            await session.execute(
+                select(UserStoreRole.store_id, Permission.code)
+                .join(Role, Role.id == UserStoreRole.role_id)
+                .join(Store, Store.id == UserStoreRole.store_id)
+                .join(LegalEntity, LegalEntity.id == Store.legal_entity_id)
+                .join(Tenant, Tenant.id == LegalEntity.tenant_id)
+                .join(RolePermission, RolePermission.role_id == UserStoreRole.role_id)
+                .join(Permission, Permission.id == RolePermission.permission_id)
+                .where(
+                    UserStoreRole.user_id == user.id,
+                    Role.tenant_id == user.tenant_id,
+                    LegalEntity.tenant_id == user.tenant_id,
+                    Tenant.active,
+                    LegalEntity.active,
+                    Store.active,
+                )
+            )
+        ).all()
+        permissions = {permission for _, permission in rows}
+        access_token, expires_at = create_access_token(
+            subject=str(user.id),
+            tenant_id=str(user.tenant_id),
+            token_version=user.token_version,
+            permissions=permissions,
+            secret=settings.jwt_secret,
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
+            lifetime=timedelta(minutes=settings.access_token_minutes),
+        )
+        new_refresh_token, _ = create_refresh_token(
+            subject=str(user.id),
+            tenant_id=str(user.tenant_id),
+            token_version=user.token_version,
+            secret=settings.jwt_secret,
+            issuer=settings.jwt_issuer,
+            audience=settings.jwt_audience,
+            lifetime=timedelta(minutes=settings.refresh_token_minutes),
+        )
+        return access_token, expires_at, new_refresh_token
 
 
 async def create_user(

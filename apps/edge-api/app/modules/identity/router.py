@@ -19,6 +19,7 @@ from app.modules.identity.schemas import (
     CreateUserRequest,
     LoginRequest,
     PrincipalResponse,
+    RefreshRequest,
     UpdateUserStatusRequest,
     UserResponse,
 )
@@ -27,6 +28,7 @@ from app.modules.identity.service import (
     authenticate,
     create_user,
     list_users,
+    refresh_access_token,
     update_user_status,
 )
 from app.persistence.database import Database
@@ -63,8 +65,36 @@ async def login(
     password_limiter: PasswordLimiterDependency,
 ) -> AccessTokenResponse:
     _disable_sensitive_response_caching(response)
-    token, expires_at = await authenticate(database, settings, request, password_limiter)
-    return AccessTokenResponse(access_token=token, expires_at=expires_at)
+    token, expires_at, refresh_token = await authenticate(
+        database, settings, request, password_limiter
+    )
+    return AccessTokenResponse(
+        access_token=token,
+        expires_at=expires_at,
+        refresh_token=refresh_token,
+    )
+
+
+@router.post(
+    "/auth/refresh",
+    response_model=AccessTokenResponse,
+    operation_id="refresh_access_token",
+)
+async def refresh(
+    request: RefreshRequest,
+    response: Response,
+    database: DatabaseDependency,
+    settings: SettingsDependency,
+) -> AccessTokenResponse:
+    _disable_sensitive_response_caching(response)
+    token, expires_at, refresh_token = await refresh_access_token(
+        database, settings, request.refresh_token
+    )
+    return AccessTokenResponse(
+        access_token=token,
+        expires_at=expires_at,
+        refresh_token=refresh_token,
+    )
 
 
 @router.get("/auth/me", response_model=PrincipalResponse, operation_id="get_current_principal")

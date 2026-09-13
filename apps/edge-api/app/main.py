@@ -274,21 +274,14 @@ def create_app(
             if path.startswith(f"{prefix}/kiosk/"):
                 for operation in methods.values():
                     operation["security"] = [{"KioskDeviceId": [], "KioskDeviceKey": []}]
-            elif path == f"{prefix}/fulfillment/heartbeat":
+            elif path == f"{prefix}/fulfillment/heartbeat" or path.startswith(
+                f"{prefix}/fulfillment/tickets"
+            ):
                 for operation in methods.values():
                     operation["security"] = [
                         {
                             "FulfillmentEndpointId": [],
                             "FulfillmentEndpointKey": [],
-                        }
-                    ]
-            elif path.startswith(f"{prefix}/fulfillment/tickets"):
-                for operation in methods.values():
-                    operation["security"] = [
-                        {
-                            "FulfillmentEndpointId": [],
-                            "FulfillmentEndpointKey": [],
-                            "StaffBearerAuth": [],
                         }
                     ]
         return document

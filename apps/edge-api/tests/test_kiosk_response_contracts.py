@@ -110,6 +110,8 @@ def test_kiosk_order_contract_keeps_customer_flow_fields_only() -> None:
         "currency",
         "locale",
         "prices_include_tax",
+        "fulfillment_type",
+        "packaging_fee_minor",
         "subtotal_minor",
         "discount_minor",
         "net_minor",
