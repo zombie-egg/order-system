@@ -3732,7 +3732,8 @@ body,
 .kiosk-shell .mobile-cart-trigger {
   inset-inline: 0;
   left: 0;
-  width: 100%;
+  width: 100vw;
+  min-width: 100vw;
   max-width: none;
   bottom: 0;
   margin: 0;
@@ -3746,7 +3747,8 @@ body,
 .kiosk-shell .cart-panel {
   inset-inline: 0;
   left: 0;
-  width: 100%;
+  width: 100vw;
+  min-width: 100vw;
   max-width: none;
   bottom: 0;
   transform: translateY(calc(100% + 2rem));
