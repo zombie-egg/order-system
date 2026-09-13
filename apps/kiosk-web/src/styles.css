@@ -3827,3 +3827,22 @@ body,
   line-height: 1;
   text-transform: uppercase;
 }
+
+/* Restore the floating rounded-glass card treatment with a small viewport
+   gutter (about 2mm) on every side. */
+.kiosk-shell .mobile-cart-trigger {
+  inset-inline: 8px;
+  left: auto;
+  width: auto;
+  min-width: 0;
+  bottom: 8px;
+  border-radius: 19px;
+}
+.kiosk-shell .cart-panel {
+  inset-inline: 8px;
+  left: auto;
+  width: auto;
+  min-width: 0;
+  bottom: 8px;
+  border-radius: 26px;
+}
