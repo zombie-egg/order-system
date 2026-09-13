@@ -1124,6 +1124,7 @@ export function App({ api: providedApi }: AppProps) {
             </div>
           </section>
 
+          </main>
           {isMobileCartOpen && (
             <button
               className="mobile-cart-backdrop"
@@ -1263,7 +1264,6 @@ export function App({ api: providedApi }: AppProps) {
               {formatMoney(estimatedTotal, activeCurrency, locale)}
             </strong>
           </button>
-          </main>
         </>
       )}
 
