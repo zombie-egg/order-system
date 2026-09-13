@@ -3725,3 +3725,33 @@ body,
   .kiosk-shell .topbar { grid-template-columns: minmax(0, 1fr) auto; }
   .kiosk-shell .step-indicator { display: none; }
 }
+
+/* Viewport-anchored bottom controls.  Avoid centering transforms here: on
+   kiosk browsers with a scaled CSS viewport they can resolve against a
+   narrower containing block and clip the drawer/trigger horizontally. */
+.kiosk-shell .mobile-cart-trigger {
+  inset-inline: 0;
+  left: 0;
+  width: 100%;
+  max-width: none;
+  bottom: 0;
+  margin: 0;
+  border-radius: 19px 19px 0 0;
+  transform: none;
+  padding-bottom: max(0.8rem, env(safe-area-inset-bottom));
+}
+.kiosk-shell .mobile-cart-trigger[aria-expanded='true'] {
+  transform: translateY(0.5rem);
+}
+.kiosk-shell .cart-panel {
+  inset-inline: 0;
+  left: 0;
+  width: 100%;
+  max-width: none;
+  bottom: 0;
+  transform: translateY(calc(100% + 2rem));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+.kiosk-shell .cart-panel.cart-panel-open {
+  transform: translateY(0);
+}
