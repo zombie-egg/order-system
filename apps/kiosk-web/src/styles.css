@@ -3757,3 +3757,33 @@ body,
 .kiosk-shell .cart-panel.cart-panel-open {
   transform: translateY(0);
 }
+
+/* Same mobile-style sheet on desktop, tablet and portrait hardware. Never
+   split the drawer into side-by-side columns (that causes the overlapping
+   layout shown in the desktop screenshot). */
+.kiosk-shell .cart-panel {
+  display: flex !important;
+  flex-direction: column;
+  overflow: hidden;
+}
+.kiosk-shell .cart-heading,
+.kiosk-shell .cart-lines,
+.kiosk-shell .empty-cart,
+.kiosk-shell .cart-summary {
+  grid-column: auto;
+  grid-row: auto;
+}
+.kiosk-shell .cart-heading { flex: 0 0 auto; }
+.kiosk-shell .cart-lines {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
+.kiosk-shell .empty-cart { flex: 1 1 auto; }
+.kiosk-shell .cart-summary {
+  flex: 0 0 auto;
+  align-self: stretch;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
